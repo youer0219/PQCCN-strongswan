@@ -96,7 +96,7 @@ def RunConfig(ymlConfig, log_dir, plvl):
     if bool(CoreConfig.get('compose_files')):
         DockerComposeFile = CoreConfig['compose_files']
     else:
-        DockerComposeFile = ["../pq-strongswan/docker-compose.yml"]
+        DockerComposeFile = ["./pq-strongswan/docker-compose.yml"]
         
     # Define the remote path of the charon log files
     if bool(CoreConfig.get('Note')):
