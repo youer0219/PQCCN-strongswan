@@ -52,7 +52,7 @@ else:
     pass
 
 # Run the Data Collection Process
-if False:
+if True:
     if ConfigFiles == '':
         root = tk.Tk()
         root.withdraw()
