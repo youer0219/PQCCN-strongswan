@@ -19,8 +19,18 @@ def _extract_numeric(value):
     return float(m.group(0)) if m else np.nan
 
 
+def _safe_limits(min_val, max_val):
+    if pd.isna(min_val) or pd.isna(max_val):
+        return (0, 1)
+    if min_val == max_val:
+        pad = 1 if min_val == 0 else abs(min_val) * 0.1
+        return (min_val - pad, max_val + pad)
+    return (min_val, max_val)
+
+
 def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
     os.makedirs(plot_dir, exist_ok=True)
+    report_rows = []
 
     # Iterate through all unique VariParam values (filter out null values)
     for varp in RunLogStatsDF['VariParam'].dropna().unique().tolist():
@@ -50,12 +60,11 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
 
         # Calculate x-axis range (no need for astype() - scalar float value)
         minval = tmpdf[newcol].min()
-        # Handle case where Baseline=False has no data
-        baseline_false_df = tmpdf[tmpdf['Baseline'] == False]
-        maxval = baseline_false_df[newcol].max() if not baseline_false_df.empty else minval
+        maxval = tmpdf[newcol].max()
+        minval, maxval = _safe_limits(minval, maxval)
 
         # Generate x-axis breaks (5 evenly spaced points to avoid overlapping labels)
-        xbreaks = np.linspace(minval, maxval, 5).tolist()
+        xbreaks = np.unique(np.linspace(minval, maxval, 5)).tolist()
         strbreaks = [round(x, 2) for x in xbreaks]  # Round to 2 decimal places for readability
 
         # List of statistics to plot
@@ -95,9 +104,12 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
                 tmpdf.loc[:, stat_plot] = tmpdf[stat] * 100  # Convert to percentage (safe assignment)
 
             # Extend y-axis range by 15% to add padding around data points
-            pad = (maxval_y - minval_y) * 0.15 if maxval_y != minval_y else max(1, abs(maxval_y) * 0.15)
-            minval_y = minval_y - pad
-            maxval_y = maxval_y + pad
+            if stat != 'ConnectionPercent':
+                pad = (maxval_y - minval_y) * 0.15 if maxval_y != minval_y else max(1, abs(maxval_y) * 0.15)
+                minval_y = minval_y - pad
+                maxval_y = maxval_y + pad
+
+            minval_y, maxval_y = _safe_limits(minval_y, maxval_y)
 
             plot_df = tmpdf.dropna(subset=[newcol, stat_plot]).copy()
             if plot_df.empty:
@@ -147,3 +159,25 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
             # Print confirmation when debug level > 1
             if plvl > 1:
                 print(f"Plot saved: {file_name}")
+
+            note = "ok"
+            if len(plot_df) < 6:
+                note = "few_points"
+            elif stat == 'ConnectionPercent' and (plot_df[stat_plot].max() > 100 or plot_df[stat_plot].min() < 0):
+                note = "out_of_range_connection_percent"
+
+            report_rows.append(
+                {
+                    'VariParam': varp,
+                    'Stat': stat,
+                    'Points': int(len(plot_df)),
+                    'XMin': float(minval),
+                    'XMax': float(maxval),
+                    'YMin': float(minval_y),
+                    'YMax': float(maxval_y),
+                    'Note': note,
+                    'Image': file_name,
+                }
+            )
+
+    return pd.DataFrame(report_rows)

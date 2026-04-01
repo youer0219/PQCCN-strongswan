@@ -44,6 +44,13 @@ The repository now includes scripts for quick local test bootstrapping:
 4. Run a full suite quickly:
    `bash ./scripts/run_experiment_suite.sh <OUTPUT_DIR> "./data_collection/configs/*.yaml"`
 
+After each orchestration run, the result directory includes:
+
+- `ExperimentReport.md`: one-page summary report
+- `PlotAudit.csv`: plot sanity audit table
+- `RunLogStatsDF.csv`: merged run statistics
+- `RunLogStatsDF_summary.csv`: compact summary view
+
 ## Testing Optimization Notes
 
 Recent improvements focus on four goals:

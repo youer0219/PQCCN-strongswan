@@ -14,6 +14,7 @@ from data_parsing import ProcessLogs
 from data_preparation import ProcessStats
 from data_analysis import Plotting
 from config_utils import resolve_config_files
+from reporting import generate_experiment_report
 
 
 def main():
@@ -50,7 +51,9 @@ def main():
     run_log_stats_df = ProcessStats.MarkLogs(run_log_stats_df, args.print_level)
     run_log_stats_df.to_csv(data_file, index=False)
 
-    Plotting.PlotVariParam(run_log_stats_df, log_dir, args.print_level)
+    plot_audit_df = Plotting.PlotVariParam(run_log_stats_df, log_dir, args.print_level)
+    if plot_audit_df is not None and len(plot_audit_df) > 0:
+        plot_audit_df.to_csv(str(Path(log_dir) / "PlotAudit.csv"), index=False)
 
     # Keep a short summary table for quick checks.
     summary_file = str(Path(log_dir) / "RunLogStatsDF_summary.csv")
@@ -63,7 +66,10 @@ def main():
         summary_df = run_log_stats_df[summary_cols].copy()
         summary_df.to_csv(summary_file, index=False)
 
+    report_path = generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df)
+
     print(f"Orchestration complete. Output directory: {log_dir}")
+    print(f"Experiment report: {report_path}")
 
 
 if __name__ == "__main__":
