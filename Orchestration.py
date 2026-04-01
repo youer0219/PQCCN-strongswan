@@ -1,102 +1,70 @@
-# This is an optional file that can be used to orchestrate the 
-#   entire data connection and analysis process.
+"""Orchestrate data collection, parsing, preparation, and plotting.
 
-## Orchestration.py
-import os
-import sys
-import yaml
-import numpy as np
-from tqdm import trange
-import pandas as pd
-import tkinter as tk
-from tkinter import filedialog
+Usage examples:
+  python3 Orchestration.py ./logs ./data_collection/configs/DataCollect.yaml
+  python3 Orchestration.py ./logs "./data_collection/configs/*.yaml"
+  python3 Orchestration.py ./logs ./data_collection/configs/
+"""
+
+import argparse
 from pathlib import Path
-from IPython.display import display, HTML 
-from plotnine import *
-import re
-import time
 
-from setuptools import setup, find_packages
-packages=find_packages()
-
-# Import local modules / functions
-from data_collection import *    # Import the DataCollection.py file
-from data_parsing import *    # Import the ProcessLogs.py file
-from data_preparation import *    # Import the DataPreparation files
-from data_analysis import *    # Import the Data Analysis files
-
-# Manually Define the log directory
-log_dir = '' #'../IKEV2_LOGS/JAMES'
-ConfigFiles = ''
-
-plvl = 2
-
-if len(sys.argv) > 1:
-    log_dir = sys.argv[1]
-if len(sys.argv) > 2:
-    ConfigFiles = sys.argv[2]
-
-if log_dir == '':
-    root = tk.Tk()
-    root.withdraw()
-
-    # Create a file dialog
-    log_dir = filedialog.askdirectory(title="Select a directory")
-
-    # Print the selected directory
-    print(log_dir)
-
-    # Close the root window
-    root.destroy()
-else:
-    pass
-
-# Run the Data Collection Process
-if True:
-    if ConfigFiles == '':
-        root = tk.Tk()
-        root.withdraw()
-
-        # Create a file dialog
-        ConfigFiles = filedialog.askopenfilenames(title="Select Configuration Files")
-
-        # Print the selected config files
-        print(ConfigFiles)
-
-        # Close the root window
-        root.destroy()
-    else:
-        pass
-    
-    for ymlCFG in ConfigFiles:
-        print("Processing Config File: " + ymlCFG + "\n\n")
-        total_time = DataCollectCore.RunConfig(ymlCFG,(log_dir + '/'), 1)
-        
-    
-
-# Process Raw Log Files save data into a DataFrame
-if True:
-    RunLogStatsDF = ProcessLogs.Log_stats(log_dir,plvl)
-    if plvl >= 1:    
-        DataFile = (log_dir + '/RunLogStatsDF.csv')
-        RunLogStatsDF.to_csv(DataFile, index=False)
-else:
-    RunLogStatsDF = pd.read_csv(log_dir + '/RunLogStatsDF.csv')
-
-display(RunLogStatsDF)
-
-# Mark Log Files as Baseline or Post-Quantum
-RunLogStatsDF = ProcessStats.MarkLogs(RunLogStatsDF,2)
+from data_collection import DataCollectCore
+from data_parsing import ProcessLogs
+from data_preparation import ProcessStats
+from data_analysis import Plotting
+from config_utils import resolve_config_files
 
 
-# Save the DataFrame to a CSV files
-DataFile = (log_dir + '/RunLogStatsDF.csv')
-RunLogStatsDF.to_csv(DataFile, index=False)
+def main():
+    parser = argparse.ArgumentParser(description="Run end-to-end PQCCN test orchestration")
+    parser.add_argument("log_dir", help="Directory to store generated logs and outputs")
+    parser.add_argument(
+        "configs",
+        help="A YAML file, YAML directory, wildcard pattern, or comma-separated list",
+    )
+    parser.add_argument("--print-level", type=int, default=2, help="Pipeline print level")
+    parser.add_argument(
+        "--collect-print-level",
+        type=int,
+        default=1,
+        help="DataCollectCore print level",
+    )
+    args = parser.parse_args()
 
-# Generate Plots for the DataFrame and save to the log directory
-Plotting.PlotVariParam(RunLogStatsDF,log_dir,2)
+    log_dir = str(Path(args.log_dir))
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+
+    config_files = resolve_config_files(args.configs)
+    if not config_files:
+        raise FileNotFoundError(f"No config files found from input: {args.configs}")
+
+    for yml_cfg in config_files:
+        print(f"Processing Config File: {yml_cfg}\n")
+        DataCollectCore.RunConfig(yml_cfg, (log_dir + "/"), args.collect_print_level)
+
+    run_log_stats_df = ProcessLogs.Log_stats(log_dir, args.print_level)
+    data_file = str(Path(log_dir) / "RunLogStatsDF.csv")
+    run_log_stats_df.to_csv(data_file, index=False)
+
+    run_log_stats_df = ProcessStats.MarkLogs(run_log_stats_df, args.print_level)
+    run_log_stats_df.to_csv(data_file, index=False)
+
+    Plotting.PlotVariParam(run_log_stats_df, log_dir, args.print_level)
+
+    # Keep a short summary table for quick checks.
+    summary_file = str(Path(log_dir) / "RunLogStatsDF_summary.csv")
+    summary_cols = [
+        c
+        for c in ["Algorithm", "VariParam", "mean", "median", "ConnectionPercent", "IterationTime"]
+        if c in run_log_stats_df.columns
+    ]
+    if summary_cols:
+        summary_df = run_log_stats_df[summary_cols].copy()
+        summary_df.to_csv(summary_file, index=False)
+
+    print(f"Orchestration complete. Output directory: {log_dir}")
 
 
-
-
-
+if __name__ == "__main__":
+    main()

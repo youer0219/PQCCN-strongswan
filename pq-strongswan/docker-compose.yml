@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   moon:
     image: strongx509/pq-strongswan:latest

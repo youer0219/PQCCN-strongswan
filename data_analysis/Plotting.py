@@ -62,6 +62,8 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
         selected_stats = ['mean', 'median', 'ConnectionPercent', 'IterationTime']
 
         for stat in selected_stats:
+            stat_plot = stat
+
             # Filter out null values for current statistic to avoid NaN in max/min calculations
             stat_series = tmpdf[stat].dropna()
             if stat_series.empty:
@@ -89,23 +91,22 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
             if stat == 'ConnectionPercent':
                 minval_y = 0
                 maxval_y = 100
-                tmpdf.loc[:, stat] = tmpdf[stat] * 100  # Convert to percentage (safe assignment)
+                stat_plot = 'ConnectionPercent_plot'
+                tmpdf.loc[:, stat_plot] = tmpdf[stat] * 100  # Convert to percentage (safe assignment)
 
             # Extend y-axis range by 15% to add padding around data points
             pad = (maxval_y - minval_y) * 0.15 if maxval_y != minval_y else max(1, abs(maxval_y) * 0.15)
             minval_y = minval_y - pad
             maxval_y = maxval_y + pad
 
-            plot_df = tmpdf.dropna(subset=[newcol, stat]).copy()
+            plot_df = tmpdf.dropna(subset=[newcol, stat_plot]).copy()
             if plot_df.empty:
                 continue
 
             # Prepare aggregated trends for cleaner readability (mean ± std)
             trend_df = (
-                plot_df.groupby([newcol, 'Algorithm'], as_index=False)[stat]
-                .agg(['mean', 'std'])
-                .reset_index()
-                .rename(columns={'mean': 'stat_mean', 'std': 'stat_std'})
+                plot_df.groupby([newcol, 'Algorithm'], as_index=False)
+                .agg(stat_mean=(stat_plot, 'mean'), stat_std=(stat_plot, 'std'))
             )
             trend_df['stat_std'] = trend_df['stat_std'].fillna(0)
             trend_df['ymin'] = trend_df['stat_mean'] - trend_df['stat_std']
@@ -114,7 +115,7 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
             # Create scatter plot with plotnine
             meanplot = (
                 ggplot(plot_df)  # Remove rows with null values for plotting
-                + aes(x=newcol, y=stat, color='Algorithm')
+                + aes(x=newcol, y=stat_plot, color='Algorithm')
                 + geom_point(alpha=0.55, size=1.8)  # Scatter plot points
                 + geom_line(data=trend_df, mapping=aes(x=newcol, y='stat_mean', color='Algorithm'), size=1.0)
                 + geom_ribbon(

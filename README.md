@@ -27,8 +27,9 @@ Let's walk through building the docker container and installing required python 
 3. Install Python dependencies: `pip install numpy python-on-whales pyyaml tqdm`
    > If you are using a Python virtual environment, be sure to activate that environment before installing the modules.
    > You can also try running `pip install -r settings.txt`.
-4. Run `python3 ./Orchestration.py` and manually specify the log storage script and test configuration file
-   The test configuration files are located at `/data_collection/configs/*.yaml`
+4. Run `python3 ./Orchestration.py <LOG_DIR> <CONFIG_INPUT>`
+   - `<CONFIG_INPUT>` supports a single YAML, a directory, wildcard, or comma-separated list.
+   - Example: `python3 ./Orchestration.py ./results "./data_collection/configs/*.yaml"`
 
 ## Fast Test Environment Setup
 
@@ -40,6 +41,8 @@ The repository now includes scripts for quick local test bootstrapping:
    `bash ./scripts/setup_docker_test_env.sh`
 3. Run orchestration with an advanced fault-injection profile:
    `python3 ./Orchestration.py <LOG_DIR> ./data_collection/configs/DataCollect_fault_injection_matrix.yaml`
+4. Run a full suite quickly:
+   `bash ./scripts/run_experiment_suite.sh <OUTPUT_DIR> "./data_collection/configs/*.yaml"`
 
 ## Testing Optimization Notes
 
