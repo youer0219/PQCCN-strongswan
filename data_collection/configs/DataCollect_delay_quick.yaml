@@ -1,0 +1,21 @@
+---
+CoreConfig:
+  TC_Iterations: 3
+  MaxTimeS: 1800
+  LocalPath: "../../perf_delay_quick/"
+  RemotePath: "/var/log/charon.log"
+  CommandRetries: 2
+  TrafficCommand: "ping -c 2 10.1.0.2"
+  PrintLevel: 1
+  compose_files: "./pq-strongswan/docker-compose.yml"
+  Note: "delay-quick"
+
+Carol_TC_Config:
+  Constraint1:
+    Type: netem
+    Constraint: delay
+    Interface: eth0
+    Units: ms
+    SweepValues: [1, 100, 200]
+    Steps: 3
+    AddParams: ''

@@ -16,38 +16,40 @@ The following pre-requisites that are required to use this project.
 - Docker
 - Python 3
 
-## Setup
+## Quick Commands
 
-Let's walk through building the docker container and installing required python modules.
+### For Rapid Testing (5-10 minutes)
+```bash
+bash ./scripts/run_performance_test.sh quick
+```
 
+### For Comprehensive Analysis (3-4 hours)
+```bash
+bash ./scripts/run_performance_test.sh full
+```
 
-1. Open a terminal console
-2. Optional: Navigate to the pq-strongswan folder and build the image manually.Use the command: `docker build -t strongx509/pq-strongswan:latest .`
-   > If the image `strongx509/pq-strongswan:latest` does not exist in the local Docker host, Docker will automatically attempt to pull it from Docker Hub. This is also reliable.
-3. Install Python dependencies: `pip install numpy python-on-whales pyyaml tqdm`
-   > If you are using a Python virtual environment, be sure to activate that environment before installing the modules.
-   > You can also try running `pip install -r settings.txt`.
-4. Run `python3 ./Orchestration.py <LOG_DIR> <CONFIG_INPUT>`
-   - `<CONFIG_INPUT>` supports a single YAML, a directory, wildcard, or comma-separated list.
-   - Example: `python3 ./Orchestration.py ./results "./data_collection/configs/*.yaml"`
+### For Custom Test Scenarios
+```bash
+# Single config
+python3 Orchestration.py ./results/test_name ./data_collection/configs/DataCollect_delay.yaml
 
-## Fast Test Environment Setup
+# Directory (all configs)
+python3 Orchestration.py ./results/batch ./data_collection/configs/
 
-The repository now includes scripts for quick local test bootstrapping:
+# Wildcard (specific pattern)
+python3 Orchestration.py ./results/quick "./data_collection/configs/*quick.yaml"
 
-1. Install Python dependencies:
-   `bash ./scripts/install_python_deps.sh`
-2. Prepare and start Docker test environment:
-   `bash ./scripts/setup_docker_test_env.sh`
-3. Run orchestration with an advanced fault-injection profile:
-   `python3 ./Orchestration.py <LOG_DIR> ./data_collection/configs/DataCollect_fault_injection_matrix.yaml`
-4. Run a full suite quickly:
-   `bash ./scripts/run_experiment_suite.sh <OUTPUT_DIR> "./data_collection/configs/*.yaml"`
+# Comma-separated (explicit selection)
+python3 Orchestration.py ./results/custom "baseline.yaml,delay.yaml"
+```
 
-After each orchestration run, the result directory includes:
+## Output
 
-- `ExperimentReport.md`: one-page summary report
-- `PlotAudit.csv`: plot sanity audit table
+After each test run, results are saved to a timestamped directory with:
+- `ExperimentReport.md` - One-page summary with key metrics and plot audit
+- `PlotAudit.csv` - Plot quality sanity checks
+- `RunLogStatsDF.csv` - Complete performance statistics
+- `*.png` - Comparison plots with trend lines and error bands
 - `RunLogStatsDF.csv`: merged run statistics
 - `RunLogStatsDF_summary.csv`: compact summary view
 
@@ -79,5 +81,13 @@ Recent improvements focus on four goals:
 
 ***You did it! The required resources are now installed!***
 
+## Documentation
+
+All comprehensive documentation is now available in English:
+
+- **[PERFORMANCE_TEST_GUIDE.md](PERFORMANCE_TEST_GUIDE.md)** - Complete testing guide with exact commands, timing breakdown, test scenarios, and troubleshooting
+- **[data_collection/CONFIG_REFERENCE.md](data_collection/CONFIG_REFERENCE.md)** - Detailed configuration parameter reference and real-world scenario patterns
+- **[data_collection/configs/README.md](data_collection/configs/README.md)** - Configuration file organization, usage examples, and customization guide
+- **[Writerside/](Writerside/)** - Full technical documentation in Writerside format
 
 License: <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>
