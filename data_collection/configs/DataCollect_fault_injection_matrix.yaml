@@ -1,0 +1,37 @@
+---
+CoreConfig:
+  TC_Iterations: 12
+  MaxTimeS: 21600
+  LocalPath: "../../fault_matrix_"
+  RemotePath: "/var/log/charon.log"
+  MirrorMoon: false
+  FreshRun: false
+  CommandRetries: 3
+  TrafficCommand: "ping -c 3 10.1.0.2"
+  PrintLevel: 2
+  compose_files:
+    - "./pq-strongswan/docker-compose.yml"
+  Note: "fault-matrix"
+
+Carol_TC_Config:
+  Constraint1:
+    Type: netem
+    Constraint: delay
+    Interface: eth0
+    Units: ms
+    SweepMode: linear
+    SweepValues: [1, 5, 10, 20, 50, 100, 150, 200]
+    Steps: 8
+    AddParams: "loss 0.5% reorder 5% 25% duplicate 0.2% corrupt 0.1%"
+    AdjustHost: carol
+
+Moon_TC_Config:
+  Constraint1:
+    Type: tbf
+    Constraint: rate
+    Interface: eth0
+    StartRange: 256
+    EndRange: 64
+    Units: kbit
+    Steps: 4
+    AddParams: "buffer 256kb latency 250ms"

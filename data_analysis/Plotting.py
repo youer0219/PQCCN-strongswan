@@ -7,9 +7,21 @@ import numpy as np
 import time
 from plotnine import *
 import re
+import os
+
+
+def _safe_file_token(value):
+    return re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(value)).strip("_")
+
+
+def _extract_numeric(value):
+    m = re.search(r"[-+]?\d*\.?\d+", str(value))
+    return float(m.group(0)) if m else np.nan
 
 
 def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
+    os.makedirs(plot_dir, exist_ok=True)
+
     # Iterate through all unique VariParam values (filter out null values)
     for varp in RunLogStatsDF['VariParam'].dropna().unique().tolist():
         print(varp)
@@ -24,11 +36,9 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
         tmpdf.loc[tmpdf['Baseline'] == True, 'Legend'] = 'Diffie-Helman'
         tmpdf.loc[tmpdf['Baseline'] == False, 'Legend'] = 'Post-Quantum'
 
-        # Extract numerical values from VariParam column (handle nulls and non-numeric strings)
+        # Extract numerical values from VariParam column (supports ints/floats in strings)
         newcol = varp + 'val'  # Convert to string (no need for list)
-        tmpdf[newcol] = tmpdf[varp].apply(
-            lambda x: re.search(r'\d+', str(x)).group(0) if pd.notnull(x) and re.search(r'\d+', str(x)) else np.nan
-        ).astype(float)
+        tmpdf[newcol] = tmpdf[varp].apply(_extract_numeric).astype(float)
 
         # Sort dataframe by numerical values and remove rows with null values in newcol
         tmpdf = tmpdf.sort_values(newcol).dropna(subset=[newcol])
@@ -44,8 +54,8 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
         baseline_false_df = tmpdf[tmpdf['Baseline'] == False]
         maxval = baseline_false_df[newcol].max() if not baseline_false_df.empty else minval
 
-        # Generate x-axis breaks (10 evenly spaced points)
-        xbreaks = np.linspace(minval, maxval, 10).tolist()
+        # Generate x-axis breaks (5 evenly spaced points to avoid overlapping labels)
+        xbreaks = np.linspace(minval, maxval, 5).tolist()
         strbreaks = [round(x, 2) for x in xbreaks]  # Round to 2 decimal places for readability
 
         # List of statistics to plot
@@ -81,27 +91,57 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
                 maxval_y = 100
                 tmpdf.loc[:, stat] = tmpdf[stat] * 100  # Convert to percentage (safe assignment)
 
-            # Extend y-axis range by 20% to add padding around data points
-            minval_y = minval_y - (minval_y * 0.2)
-            maxval_y = maxval_y + (maxval_y * 0.2)
+            # Extend y-axis range by 15% to add padding around data points
+            pad = (maxval_y - minval_y) * 0.15 if maxval_y != minval_y else max(1, abs(maxval_y) * 0.15)
+            minval_y = minval_y - pad
+            maxval_y = maxval_y + pad
+
+            plot_df = tmpdf.dropna(subset=[newcol, stat]).copy()
+            if plot_df.empty:
+                continue
+
+            # Prepare aggregated trends for cleaner readability (mean ± std)
+            trend_df = (
+                plot_df.groupby([newcol, 'Algorithm'], as_index=False)[stat]
+                .agg(['mean', 'std'])
+                .reset_index()
+                .rename(columns={'mean': 'stat_mean', 'std': 'stat_std'})
+            )
+            trend_df['stat_std'] = trend_df['stat_std'].fillna(0)
+            trend_df['ymin'] = trend_df['stat_mean'] - trend_df['stat_std']
+            trend_df['ymax'] = trend_df['stat_mean'] + trend_df['stat_std']
 
             # Create scatter plot with plotnine
             meanplot = (
-                ggplot(tmpdf.dropna(subset=[newcol, stat]))  # Remove rows with null values for plotting
+                ggplot(plot_df)  # Remove rows with null values for plotting
                 + aes(x=newcol, y=stat, color='Algorithm')
-                + geom_point()  # Scatter plot points
+                + geom_point(alpha=0.55, size=1.8)  # Scatter plot points
+                + geom_line(data=trend_df, mapping=aes(x=newcol, y='stat_mean', color='Algorithm'), size=1.0)
+                + geom_ribbon(
+                    data=trend_df,
+                    mapping=aes(x=newcol, ymin='ymin', ymax='ymax', fill='Algorithm'),
+                    alpha=0.15,
+                    inherit_aes=False,
+                )
                 + labs(title=f"{varp} vs. {stat}", x=varp, y=stat)  # Plot titles/labels
                 + scale_x_continuous(breaks=strbreaks, limits=[minval, maxval])  # X-axis scale
                 + scale_y_continuous(limits=[minval_y, maxval_y])  # Y-axis scale
-                + scale_color_manual(values=['#0077C8', '#E69F00'])  # Custom color palette
+                + scale_color_manual(values=['#1E88E5', '#E07A1F'])
+                + scale_fill_manual(values=['#1E88E5', '#E07A1F'])
+                + theme_bw()
+                + theme(
+                    figure_size=(9, 5),
+                    legend_position='top',
+                    panel_grid_minor=element_blank(),
+                )
             )
 
             # Generate unique filename with timestamp
             date_time = time.strftime("%Y%m%d_%H%M")
-            file_name = f"{date_time}_{varp}_vs_{stat}.png"
+            file_name = f"{date_time}_{_safe_file_token(varp)}_vs_{_safe_file_token(stat)}.png"
             
-            # Save plot to specified directory (600 DPI for high resolution)
-            ggsave(meanplot, filename=file_name, path=plot_dir, dpi=600)
+            # Save plot to specified directory (300 DPI balances quality and file size)
+            ggsave(meanplot, filename=file_name, path=plot_dir, dpi=300)
 
             # Print confirmation when debug level > 1
             if plvl > 1:

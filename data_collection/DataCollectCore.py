@@ -1,511 +1,317 @@
-## Core Data Collection Script
-#  This script is the core data collection script for the PostQuantumIKEv2 project.
-#  The script is designed to be run on a host machine and will interact with Docker
-#  to start and stop containers. The script will also interact with the containers
-#  to enable qdisc for tc, and to start strongswan the charon deamon. 
-#  The script then invokes a loop to change the tc constraints
-#  an inner loop then initiates and terminates the IPSEC connection a defined number of times. 
-#  once the IPSEC loop is complete the script will update the tc constraints and repeat the process.
-#  Once the tc constraint range has been covered, script will copy the charon log files 
-#  from the Carol container to the host machine. The script will also log the run stats to a file. 
-#  Finally the script will also remove all qdisc constraints and stop the containers.
-#
-#  To run the script, the user must provide a YAML configuration file.
-#  this can be passed to python as an argument in the terminal or the default file will be used.
-#  The default file is DataCollect_baseline.yaml but can be changed in the code below.
-#
-#  Example terminal command: python3 DataCollectCore.py DataCollect_baseline.yaml
-#
+"""Core data collection flow for PQCCN strongSwan experiments.
 
+This module keeps the original RunConfig(ymlConfig, log_dir, plvl) API, while
+adding safer config handling, retry logic, and richer constraint sweep options.
+"""
 
-# Import the required libraries
-import os           # Not used
-import sys
-import subprocess   # Not used
+import os
 import shlex
 import time
-import json         # Not used
-import yaml
+from typing import Dict, Iterable, List, Tuple
+
 import numpy as np
+import yaml
 from python_on_whales import DockerClient
 from tqdm import trange
 
+
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _normalize_compose_files(compose_value):
+    if compose_value is None:
+        return ["./pq-strongswan/docker-compose.yml"]
+    if isinstance(compose_value, str):
+        return [compose_value]
+    if isinstance(compose_value, list):
+        return compose_value
+    raise ValueError("CoreConfig.compose_files must be a string or a list of strings")
+
+
+def _build_sweep_values(cfg: Dict) -> np.ndarray:
+    if cfg.get("SweepValues"):
+        return np.array(cfg["SweepValues"], dtype=float)
+
+    start = float(cfg.get("StartRange", 1))
+    end = float(cfg.get("EndRange", start))
+    steps = int(cfg.get("Steps", 1))
+    steps = max(1, steps)
+
+    mode = str(cfg.get("SweepMode", "linear")).strip().lower()
+    if steps == 1:
+        return np.array([start], dtype=float)
+
+    if mode == "log":
+        if start <= 0 or end <= 0:
+            raise ValueError("SweepMode=log requires StartRange and EndRange > 0")
+        vals = np.logspace(np.log10(start), np.log10(end), steps)
+    else:
+        vals = np.linspace(start, end, steps)
+    return np.round(vals, 4)
+
+
+def _print_nested(title: str, data: Dict):
+    print(f"\n\n{title}")
+    for k, v in data.items():
+        print(f"\t{k}")
+        if isinstance(v, dict):
+            for sk, sv in v.items():
+                print(f"\t\t{sk}: {sv}")
+
+
+def _exec_with_retry(docker: DockerClient, host: str, command: str, retries=1, plvl=0, detach=False):
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            docker.execute(host, shlex.split(command), detach=detach)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            last_err = exc
+            if plvl > 1:
+                print(f"[{host}] command failed ({attempt}/{retries}): {command}")
+                print(f"  reason: {exc}")
+            if attempt < retries:
+                time.sleep(0.2)
+    if plvl > 0:
+        print(f"[{host}] final failure: {command}")
+        print(f"  reason: {last_err}")
+    return False
+
+
+def _target_hosts(adjust_host: str, mirror_moon: bool) -> List[str]:
+    mode = str(adjust_host or "carol").strip().lower()
+    if mode == "both":
+        return ["carol", "moon"]
+    if mode == "moon":
+        return ["moon"]
+    if mirror_moon:
+        return ["carol", "moon"]
+    return ["carol"]
+
+
+def _constraint_to_cmd(prefix: str, item: Dict, value=None, add_params="") -> str:
+    ctype = item["Type"]
+    c = item["Constraint"]
+    iface = item["Interface"]
+    units = item.get("Units", "")
+    if value is None:
+        value = item.get("StartRange", 1)
+    return f"tc qdisc {prefix} dev {iface} root {ctype} {c} {value}{units} {add_params}".strip()
+
+
+def _load_config(yml_config: str) -> Tuple[Dict, Dict, Dict]:
+    with open(yml_config, encoding="utf-8") as f:
+        conf = yaml.safe_load(f) or {}
+
+    core = conf.get("CoreConfig") or {}
+    carol = conf.get("Carol_TC_Config") or {}
+    moon = conf.get("Moon_TC_Config") or {}
+
+    if not isinstance(core, dict):
+        raise ValueError("CoreConfig must be a mapping")
+    if not isinstance(carol, dict):
+        raise ValueError("Carol_TC_Config must be a mapping")
+    if not isinstance(moon, dict):
+        raise ValueError("Moon_TC_Config must be a mapping")
+
+    return core, carol, moon
+
+
+def _ensure_local_path(path_value: str) -> str:
+    path_value = path_value or "./"
+    os.makedirs(path_value, exist_ok=True)
+    if not path_value.endswith("/"):
+        return path_value + "/"
+    return path_value
+
+
+def _resolve_iteration_count(core: Dict) -> int:
+    if core.get("TC_Interations") is not None:
+        return max(1, int(core.get("TC_Interations")))
+    return max(1, int(core.get("TC_Iterations", 1)))
+
+
+def _combine_additional_constraints(base_item: Dict, extras: Iterable[Dict]) -> str:
+    add_params = str(base_item.get("AddParams", "") or "").strip()
+    base_type = base_item.get("Type")
+    for item in extras:
+        if item.get("Type") != base_type:
+            continue
+        chunk = f"{item['Constraint']} {item.get('StartRange', 1)}{item.get('Units', '')} {item.get('AddParams', '')}".strip()
+        add_params = f"{add_params} {chunk}".strip()
+    return add_params
+
+
+def _apply_static_constraints(docker, host: str, base_item: Dict, static_items: Iterable[Dict], retries: int, plvl: int):
+    for item in static_items:
+        if item.get("Type") == base_item.get("Type"):
+            continue
+        cmd = _constraint_to_cmd("add", item, value=item.get("StartRange", 1), add_params=str(item.get("AddParams", "") or ""))
+        _exec_with_retry(docker, host, cmd, retries=retries, plvl=plvl)
+
+
 def RunConfig(ymlConfig, log_dir, plvl):
-    ## RunConfig.py
-    # Path: data_collection/RunConfig.py
-    # This file is used to run the Data Collection Core script.
-    # The script will import the configuration file and run the Data Collection Core script.
-    # NOTE: log_dir, and plvl can be defined in the yaml config file. The yaml config
-    #   file will "lose" if the same variable is defined in both places. If you want to use
-    #   the yaml config file to define the variables then set the variables to empty '' in the function call.
-    
-    if False:
-        ymlConfig = "./data_collection/configs/DataCollect_duplicate_DH.yaml"
-        # ConfigFile = "DataCollect_bandwidth.json"
-    else:
-        pass
+    core, carol_cfg, moon_cfg = _load_config(ymlConfig)
 
-
-    ## IMPORT CONFIGURATION FILE
-    # Open the JSON file
-    # with open('PostQuantumIKEv2/' + ConfigFile) as file:
-    #     JSONConfig = json.load(file)
-
-    # Open the YAML config file
-    with open(ymlConfig) as file:
-        YAMLConfig = yaml.safe_load(file)
-
-    
-
-    CoreConfig = YAMLConfig.get('CoreConfig')
-    CarolConfig = YAMLConfig.get('Carol_TC_Config')
-    MoonConfig = YAMLConfig.get('Moon_TC_Config')
-    
-    # Define the print level  
-    if plvl == '':
-        if bool(CoreConfig.get('PrintLevel')): 
-            pLvl = CoreConfig['PrintLevel']
-        else:
-            pLvl = 0
-    else:
-        pLvl = plvl
-
-    # Define the local path to save the log files
-    if log_dir == '':
-        if bool(CoreConfig.get('LocalPath')):
-            LOG_LocalPath = CoreConfig['LocalPath']
-        else:
-            LOG_LocalPath = './'
-    else:
-        LOG_LocalPath = log_dir
-
-
-    # Define the maximum run time
-    if bool(CoreConfig.get('MaxTimeS')):
-        max_run_time = CoreConfig['MaxTimeS']
-    else:
-        max_run_time = 3600  # 3600 seconds is 1 hour
-
-    # Define the remote path of the charon log files
-    if bool(CoreConfig.get('RemotePath')):
-        RemotePath = CoreConfig['RemotePath']
-    else:
-        RemotePath = "/var/log/charon.log"
-
-    # Define the location and name of the Docker Compose File
-    if bool(CoreConfig.get('compose_files')):
-        DockerComposeFile = CoreConfig['compose_files']
-    else:
-        DockerComposeFile = ["./pq-strongswan/docker-compose.yml"]
-        
-    # Define the remote path of the charon log files
-    if bool(CoreConfig.get('Note')):
-        Note = CoreConfig['Note']
-    else:
-        Note = ""
-        
+    pLvl = int(core.get("PrintLevel", 0) if plvl == "" else plvl)
+    log_local_path = _ensure_local_path(log_dir if log_dir != "" else core.get("LocalPath", "./"))
+    max_run_time = float(core.get("MaxTimeS", 3600))
+    remote_path = str(core.get("RemotePath", "/var/log/charon.log"))
+    compose_files = _normalize_compose_files(core.get("compose_files"))
+    note = str(core.get("Note", ""))
+    mirror_moon = _as_bool(core.get("MirrorMoon", False))
+    fresh_run = _as_bool(core.get("FreshRun", False))
+    retries = max(1, int(core.get("CommandRetries", 1)))
+    traffic_cmd = str(core.get("TrafficCommand", "ping -c 2 10.1.0.2"))
+    ipsec_n = _resolve_iteration_count(core)
 
     if pLvl > 0:
-        # Print the dictionary values
         print("\n\nCORE CONFIG")
-        for x in CoreConfig:
-            print("\t" + x + ':', CoreConfig[x])
-
-        # Because the Carol and Moon dictionaries are nested, 
-        #  we need to loop through the top level and the nested levels to print
-        print("\n\nCAROL CONFIG")
-        if bool(CarolConfig):
-            for x, obj in CarolConfig.items():
-                print("\t" + x)
-
-                for y in obj:
-                    print("\t\t" + y + ':', obj[y])
-
-        print("\n\nMOON CONFIG")
-        if bool(MoonConfig):
-            for x, obj in MoonConfig.items():
-                print("\t" + x)
-
-                for y in obj:
-                    print("\t\t" + y + ':', obj[y])
-
-
+        for k, v in core.items():
+            print(f"\t{k}: {v}")
+        if carol_cfg:
+            _print_nested("CAROL CONFIG", carol_cfg)
+        if moon_cfg:
+            _print_nested("MOON CONFIG", moon_cfg)
 
     print("\n\n -----------------------------------------------")
-    print("Max Run Time: " + str(max_run_time/60) + " minutes")
+    print(f"Max Run Time: {max_run_time / 60} minutes")
     print("----------------------------------------------- \n\n")
 
-    # Define the Docker Client
-    docker = DockerClient(compose_files=DockerComposeFile)
+    docker = DockerClient(compose_files=compose_files)
     docker.compose.ps()
 
-    ## SET TO FALSE IF DOCKER AND CHARON ARE ALREADY RUNNING
-    FreshRun = False
-
-    if FreshRun == False:
-        ## Stop Docker Containers (incase any are running)
-        docker.compose.down()
-
-        ## Start Docker Containers
-        if pLvl > 0:
-            print(" -- Starting Docker Containers -- ")
-        # Start the Docker Containers    
-        docker.compose.up(detach=True)
-
-        # Wait for the containers to start, probably not needed at all
-        time.sleep(5)
-    else:
-        print("Use Existing Containers") #docker.compose.restart()
-
-    if True == True:
-        # Access Carol & moon to enable qdisc
-        if pLvl > 0:
-            print(" -- Enable qdisc in Carol & Moon -- ")
-        docker.execute("carol", shlex.split("ip link set eth0 qlen 1000"))
-        docker.execute("moon", shlex.split("ip link set eth0 qlen 1000"))
-
-        # Enable moon to accept IPSEC connections
-        if pLvl > 0:
-            print(" -- Enable .charon deamon on moon-- ")
-        docker.execute("moon", shlex.split("./charon"), detach=True)
-        docker.execute("moon", shlex.split("swanctl --list-conns"))
-
-        #Start Logging (Charon)
-        if pLvl > 0:
-            print(" -- Enable .charon deamon on Carol-- ")
-        docker.execute("carol", shlex.split("./charon"), detach=True)
-        docker.execute("carol", shlex.split("swanctl --list-conns"))
-
-
-        # Access Carol and add starting TC Constrains
-        # Because the Carol and Moon dictionaries are nested, 
-        #  we need to loop through the top level and the nested levels to print
-        
-        C_ctype = ''
-        C_constraint = ''
-        C_interface = ''
-        C_Min = 1
-        C_Max = 1
-        C_units = ''
-        C_steps = 1
-        C_AddParams = ''
-
-        M_ctype = ''
-        M_constraint = ''
-        M_interface = ''
-        M_Min = 1
-        M_Max = 1
-        M_units = ''
-        M_steps = 1
-        M_AddParams = ''
-
-        tc_string = ''
-
-        # if there are constraints in the Carol Config then add them
-        if bool(CarolConfig):
-            # Assign starting TC Constrains to variables
-            for x, obj in CarolConfig.items():
-                # First Constraint should be the adjustable constraint
-                if x == 'Constraint1':
-                    C_ctype = obj['Type']
-                    C_constraint = obj['Constraint']
-                    C_interface = obj['Interface']
-                    C_Min = obj['StartRange']
-                    C_Max = obj['EndRange']
-                    C_units = obj['Units']
-                    C_steps = obj['Steps']
-                    if bool(obj['AddParams']):
-                        C_AddParams = obj['AddParams']
-
-                    # Build the tc command string
-                    tc_string = ("tc qdisc " + "add" + " dev " + C_interface + " root " + C_ctype + " " +  
-                        C_constraint + " " + str(C_Min) + C_units + " " + C_AddParams)
-
-                    if pLvl > 1:
-                        print("Carol Starter Adjustable Constraint: " + tc_string)
-
-                    # Execute the tc command    
-                    docker.execute("carol", shlex.split(tc_string))
-
-                    # If MirrorMoon is True then execute the same command on Moon
-                    if CoreConfig['MirrorMoon'] == True:
-                        docker.execute("moon", shlex.split(tc_string))
-
-                else:
-                    # If there are additional static constraints listed
-                    tmp_ctype = obj['Type']
-                    tmp_constraint = obj['Constraint']
-                    tmp_interface = obj['Interface']
-                    tmp_Min = obj['StartRange']
-                    tmp_units = obj['Units']
-                    if bool(obj['AddParams']):
-                        tmp_AddParams = obj['AddParams']
-                    else:
-                        tmp_AddParams = ''
-
-                    
-                    # Check the type of constraint
-                    if tmp_ctype == C_ctype:
-                        # If the constraint type is the same then we need to tack on the additional constraints to the primary constraint
-                        # for example if we are using netem on both constraints (for example delay and loss)
-                        # then we cannot add both. Instead we combine them into one command and update AddParams with the 
-                        # additional constraints. Then we need replace the previous constraint
-                        # tc qdisc replace dev eth0 root netem delay 200ms loss 10%
-                        # Really the perefered placement for additional static constraints would be the the AddParams field.
-
-                        C_AddParams = (C_AddParams + " " + tmp_constraint + " "  + str(tmp_Min) + tmp_units + " " + tmp_AddParams)
-
-                        if pLvl > 1:
-                            print("Warning: New Constraint Type is the same as the adjustable constraint:" + tmp_ctype)
-                        tc_string = ("tc qdisc " + "replace" + " dev " + C_interface + " root " + C_ctype + " " +  
-                            C_constraint + " " + str(C_Min) + C_units + " " + C_AddParams)
-                    else:
-                        tc_string = ("tc qdisc add dev " + tmp_interface + " root " + tmp_ctype + " " + 
-                            tmp_constraint + " " + str(tmp_Min) + tmp_units + " " + tmp_AddParams)
-                    
-                    
-
-                    # Execute the tc command
-                    docker.execute("carol", shlex.split(tc_string))
-                    if pLvl > 1:
-                        print("Carol Starter Constraint: " + tc_string)
-
-                    # If MirrorMoon is True then execute the same command on Moon
-                    if CoreConfig['MirrorMoon'] == True:
-                        docker.execute("moon", shlex.split(tc_string))
-                        if pLvl > 1:
-                            print("Carol Starter Constraint Mirrored on Moon:" + tc_string)
-                    
-
-        # Access Moon and add starting TC Constrains
-        if bool(MoonConfig):
-            for x, obj in MoonConfig.items():
-                # First Constraint should be the adjustable constraint (though currently the code only adjust constraints on carol)
-                if x == 'Constraint1':
-                    M_ctype = obj['Type']
-                    M_constraint = obj['Constraint']
-                    M_interface = obj['Interface']
-                    M_Min = obj['StartRange']
-                    M_Max = obj['EndRange']
-                    M_units = obj['Units']
-                    M_steps = obj['Steps']
-                    if bool(obj['AddParams']):
-                        M_AddParams = obj['AddParams']
-
-                    # Build the tc command string
-                    tc_string = ("tc qdisc add dev " + M_interface + " root " + M_ctype + " " +  
-                        M_constraint + " " + str(M_Min) + M_units + " " + M_AddParams)
-
-                    if pLvl > 1:
-                        print("Moon Starter Adjustable Constraint: " + tc_string)
-
-                    # Execute the tc command    
-                    docker.execute("moon", shlex.split(tc_string))
-
-                else:
-                    # If there are additional static constraints listed
-                    tmp_ctype = obj['Type']
-                    tmp_constraint = obj['Constraint']
-                    tmp_interface = obj['Interface']
-                    tmp_Min = obj['StartRange']
-                    tmp_units = obj['Units']
-                    if bool(obj['AddParams']):
-                        tmp_AddParams = obj['AddParams']
-                    else:
-                        tmp_AddParams = ''
-
-                    # Check the type of constraint
-                    if tmp_ctype == M_ctype:
-                        # If the constraint type is the same then we need to tack on the additional constraints to the primary constraint
-                        # for example if we are using netem on both constraints (for example delay and loss)
-                        # then we cannot add both. Instead we combine them into one command and update AddParams with the 
-                        # additional constraints. Then we need replace the previous constraint
-                        # tc qdisc replace dev eth0 root netem delay 200ms loss 10%
-                        # Really the perefered placement for additional static constraints would be the the AddParams field.
-
-                        M_AddParams = (M_AddParams + " " + tmp_constraint + " "  + str(tmp_Min) + tmp_units + " " + tmp_AddParams)
-
-                        if pLvl > 1:
-                            print("Warning: New Constraint Type is the same as the adjustable constraint:" + tmp_ctype)
-                        
-                        # Build the tc command string with replace
-                        tc_string = ("tc qdisc " + "replace" + " dev " + M_interface + " root " + M_ctype + " " +  
-                            M_constraint + " " + str(M_Min) + M_units + " " + M_AddParams)
-                        
-                    else:
-                        # Build the tc command string with add
-                        tc_string = ("tc qdisc add dev " + tmp_interface + " root " + tmp_ctype + " " + 
-                            tmp_constraint + " " + str(tmp_Min) + tmp_units + " " + tmp_AddParams)
-
-                    if pLvl > 1:
-                            print("Moon Starter Constraint: " + tc_string)
-
-                    # Execute the tc command on moon
-                    docker.execute("moon", shlex.split(tc_string))
-
-    # Wait for the containers to have all settings applied.
-    time.sleep(1)
-
-    # Start Run Timer
-    if pLvl > 0:
-        print(" -- Starting Data Collection Run -- ")
-
-    # Start the run timer
+    base_carol = carol_cfg.get("Constraint1") if carol_cfg else None
+    base_moon = moon_cfg.get("Constraint1") if moon_cfg else None
     startrun_tic = time.perf_counter()
 
+    try:
+        if not fresh_run:
+            docker.compose.down()
+            if pLvl > 0:
+                print(" -- Starting Docker Containers -- ")
+            docker.compose.up(detach=True)
+            time.sleep(5)
+        elif pLvl > 0:
+            print("Use Existing Containers")
 
-    # Calculate a linear range of values for Carol Constraint 1
+        if pLvl > 0:
+            print(" -- Enable qdisc in Carol & Moon -- ")
+        _exec_with_retry(docker, "carol", "ip link set eth0 qlen 1000", retries=retries, plvl=pLvl)
+        _exec_with_retry(docker, "moon", "ip link set eth0 qlen 1000", retries=retries, plvl=pLvl)
 
-    C_vals = np.round(np.linspace(C_Min, C_Max, C_steps), 2)
+        if pLvl > 0:
+            print(" -- Enable charon daemon -- ")
+        _exec_with_retry(docker, "moon", "./charon", retries=retries, plvl=pLvl, detach=True)
+        _exec_with_retry(docker, "moon", "swanctl --list-conns", retries=retries, plvl=pLvl)
+        _exec_with_retry(docker, "carol", "./charon", retries=retries, plvl=pLvl, detach=True)
+        _exec_with_retry(docker, "carol", "swanctl --list-conns", retries=retries, plvl=pLvl)
 
-    if pLvl > 0:
-        print(" -- Begin Constraint 1 Loop -- ")
+        if base_carol:
+            adjust_host = base_carol.get("AdjustHost", "carol")
+            target_hosts = _target_hosts(adjust_host, mirror_moon)
+            extra_items = [v for k, v in carol_cfg.items() if k != "Constraint1"]
+            c_add_params = _combine_additional_constraints(base_carol, extra_items)
 
-    if pLvl > 0:
-        print("Total Planned Iterations: " + str(len(C_vals)))
-        print("Planned Values for Carol Constraint " + C_constraint + ": " + str.replace(str(C_vals)," ",",",1) + "\n\n")
+            starter = _constraint_to_cmd("add", base_carol, value=base_carol.get("StartRange", 1), add_params=c_add_params)
+            for host in target_hosts:
+                _exec_with_retry(docker, host, starter, retries=retries, plvl=pLvl)
+            for host in target_hosts:
+                _apply_static_constraints(docker, host, base_carol, extra_items, retries, pLvl)
 
-    #START Constraint 1 Loop
-    for i in trange(len(C_vals)):
-        
-        
-        #Start Wireshark Logging
+        if base_moon:
+            extra_items = [v for k, v in moon_cfg.items() if k != "Constraint1"]
+            m_add_params = _combine_additional_constraints(base_moon, extra_items)
+            starter = _constraint_to_cmd("add", base_moon, value=base_moon.get("StartRange", 1), add_params=m_add_params)
+            _exec_with_retry(docker, "moon", starter, retries=retries, plvl=pLvl)
+            _apply_static_constraints(docker, "moon", base_moon, extra_items, retries, pLvl)
 
-        # Start Internal Timer for Constraint 1 Loop
-        L1_tic = time.perf_counter()
+        time.sleep(1)
+        if pLvl > 0:
+            print(" -- Starting Data Collection Run -- ")
 
-        # Update Carol Constraints (change)
-        if bool(CarolConfig):
-            tc_string = ("tc qdisc change dev " + C_interface + " root " + C_ctype + " " + 
-                C_constraint + " " + str(C_vals[i]) + C_units + " " + C_AddParams)
-        
-            # Execute the tc command
-            docker.execute("carol", shlex.split(tc_string))
-            if pLvl > 2:
-                print("Updated Carol With: " + tc_string)
+        c_vals = _build_sweep_values(base_carol) if base_carol else np.array([1.0])
+        if pLvl > 0:
+            cname = base_carol.get("Constraint", "baseline") if base_carol else "baseline"
+            print(" -- Begin Constraint 1 Loop -- ")
+            print(f"Total Planned Iterations: {len(c_vals)}")
+            print(f"Planned Values for Carol Constraint {cname}: {c_vals.tolist()}\n\n")
 
-            if CoreConfig['MirrorMoon'] == True:
-                # Update Moon Constraints (change) to match carol
-                docker.execute("moon", shlex.split(tc_string))
+        for i in trange(len(c_vals)):
+            l1_tic = time.perf_counter()
+            c_add_params = ""
+            tc_cmd = ""
+
+            if base_carol:
+                c_add_params = _combine_additional_constraints(base_carol, [v for k, v in carol_cfg.items() if k != "Constraint1"])
+                tc_cmd = _constraint_to_cmd("change", base_carol, value=c_vals[i], add_params=c_add_params)
+                adjust_host = base_carol.get("AdjustHost", "carol")
+                for host in _target_hosts(adjust_host, mirror_moon):
+                    _exec_with_retry(docker, host, tc_cmd, retries=retries, plvl=pLvl)
                 if pLvl > 2:
-                    print("Updated Moon With: " + tc_string)
+                    print(f"Updated constraints with: {tc_cmd}")
 
+            for _ in trange(ipsec_n):
+                _exec_with_retry(docker, "carol", "swanctl --initiate --child net", retries=retries, plvl=pLvl)
+                _exec_with_retry(docker, "carol", traffic_cmd, retries=retries, plvl=pLvl)
+                _exec_with_retry(docker, "carol", "swanctl --terminate --ike home", retries=retries, plvl=pLvl)
+                if time.perf_counter() - startrun_tic > max_run_time:
+                    break
 
-        # START Single Constraint Function
-        # IPSEC LOOP N TIMES
-        if bool(CoreConfig.get('TC_Interations')):
-            ipsec_N = CoreConfig['TC_Interations']
-        elif bool(CoreConfig.get('TC_Iterations')):
-            ipsec_N = CoreConfig['TC_Iterations']  #misspelling in original yaml
-        else:
-            ipsec_N = 1
-            
-        if pLvl > 2:
-            print(" -- Begin IPSec Loop -- ")
-        for j in trange(ipsec_N):
-
-            
-            try:
-                # Initiate IPSEC Connection
-                if pLvl > 3:
-                    print("swanctl --initiate --child net")
-
-                docker.execute("carol", shlex.split("swanctl --initiate --child net"))
-            except:
-                if pLvl > 1:
-                    print("Possible Error initiating IPSEC Tunnel ")
+            date_time = time.strftime("%Y%m%d_%H%M")
+            if base_carol:
+                c_units = str(base_carol.get("Units", ""))
+                c_name = str(base_carol.get("Constraint", "constraint"))
+                log_name = f"{log_local_path}charon-{date_time}-{c_name}_{c_vals[i]}{c_units}-iter_{ipsec_n}_{note}.log"
+            else:
+                log_name = f"{log_local_path}charon-{date_time}-baseline-iter_{ipsec_n}.log"
 
             try:
-                # Send data file
-                docker.execute("carol", shlex.split("ping -c 2 10.1.0.2")) #intranet IP address of moon
-            except:
-                if pLvl > 1:
-                    print("Possible Error sending data in Tunnel ")
+                docker.copy(("carol", remote_path), log_name)
+            except Exception as exc:  # noqa: BLE001
+                if pLvl > 0:
+                    print(f"copy log failed: {exc}")
+            _exec_with_retry(docker, "carol", "sh -lc \"echo 'newlog' > /var/log/charon.log\"", retries=retries, plvl=pLvl)
+            _exec_with_retry(docker, "carol", "swanctl --reload-settings", retries=retries, plvl=pLvl)
 
-            try:
-                # Deactivate IPSEC Connection
-                if pLvl > 3:
-                    print("swanctl --terminate --ike home")
+            total_time = time.perf_counter() - startrun_tic
+            l1_time = time.perf_counter() - l1_tic
+            est_rem = (len(c_vals) - i - 1) * l1_time
+            if pLvl > 1:
+                print(f"Total Time: {total_time} seconds")
+                print(f"Last Run Time: {l1_time} seconds")
+                print(f"Estimated Remaining Time: {est_rem} seconds")
 
-                docker.execute("carol", shlex.split("swanctl --terminate --ike home"))
-            except:
-                if pLvl > 1:
-                    print("Possible Error terminating IPSEC Tunnel")
+            with open(f"{log_local_path}runstats.txt", "a", encoding="utf-8") as f:
+                f.writelines(
+                    log_name
+                    + "; Additional Params: "
+                    + c_add_params
+                    + "; tc_command: "
+                    + tc_cmd
+                    + "; IterationTime: "
+                    + str(l1_time)
+                    + " seconds"
+                    + "; Total Run Time: "
+                    + str(total_time)
+                    + " seconds\n"
+                )
 
-            # Check timer if > max time break loop
             if time.perf_counter() - startrun_tic > max_run_time:
                 break
-            else:
-                continue
-        # END IPSEC LOOP 
-        # END Single Constraint Function
 
-        #Stop Wireshark Logging
+    finally:
+        if pLvl > 0:
+            print(" -- Wrapping Up Run -- ")
+        _exec_with_retry(docker, "carol", "tc qdisc del dev eth0 root", retries=1, plvl=pLvl)
+        _exec_with_retry(docker, "moon", "tc qdisc del dev eth0 root", retries=1, plvl=pLvl)
+        docker.compose.down()
 
-
-
-        ## Move Data Files from Carol to local machine (or volume) and rename
-        # Create date_time string
-        date_time = time.strftime("%Y%m%d_%H%M")
-
-        if bool(CarolConfig):
-            # create log file name
-            LogName = (LOG_LocalPath + "charon-" + date_time + "-" + C_constraint + "_" + str(C_vals[i]) + 
-                C_units + "-"+ "iter_" + str(ipsec_N) + "_" + str(Note) + ".log")
-        else:
-            LogName = ("./charon-" + date_time + "baseline_" + str(C_vals[i]) + "-iter_" + str(ipsec_N) + ".log")
-        
-        # Copy log file from Carol to local machine
-        docker.copy(("carol", RemotePath), LogName)
-
-        #Reload Settings which forces a new Charon Log File
-        docker.execute("carol", shlex.split("echo 'newlog' > /var/log/charon.log"))
-        docker.execute("carol", shlex.split("swanctl --reload-settings"))
-
-        #print run stats and estimated remaining time
-        total_time = time.perf_counter() - startrun_tic
-        L1_time = time.perf_counter() - L1_tic
-        EstRemTime = (len(C_vals)-i) * L1_time
-        if pLvl > 1:
-            print("Total Time: " + str(total_time) + " seconds")
-            print("Last Run Time: " + str(L1_time) + " seconds")
-            print("Estimated Remaining Time: " + str(EstRemTime) + " seconds")
-
-        #save run stats to file
-        file1 = open((LOG_LocalPath + "runstats.txt"),"a")
-        file1.writelines(LogName + "; " +
-            "Additional Params: " + C_AddParams + "; tc_command: " + tc_string +
-            "; IterationTime: " + str(L1_time) + " seconds" + 
-            "; Total Run Time: " + str(total_time) + " seconds\n")
-        file1.close()
-
-        #check timer if > max time break loop
-        if time.perf_counter() - startrun_tic > max_run_time:
-            break
-
-    #END Constraint 1 Loop
-
-    # If not done previously Move all Data Files from Carol to local machine
-
-    if pLvl > 0:
-        print(" -- Wrapping Up Run -- ")
-
-    #print run stats
-    total_time = time.perf_counter() - startrun_tic
-    if pLvl > 1:
-        print("Total Time: " + str(total_time) + " seconds")
-
-
-
-    #remove all TC constraints
-    try:
-        docker.execute("carol", shlex.split("tc qdisc del dev eth0 root"))
-        docker.execute("moon", shlex.split("tc qdisc del dev eth0 root"))
-    except:
-        if pLvl > 1:
-            print("Possible Error removing TC constraints")
-
-    ## Stop Docker Containers
-    docker.compose.down()
-    
-    return total_time
+    return time.perf_counter() - startrun_tic

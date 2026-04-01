@@ -30,6 +30,43 @@ Let's walk through building the docker container and installing required python 
 4. Run `python3 ./Orchestration.py` and manually specify the log storage script and test configuration file
    The test configuration files are located at `/data_collection/configs/*.yaml`
 
+## Fast Test Environment Setup
+
+The repository now includes scripts for quick local test bootstrapping:
+
+1. Install Python dependencies:
+   `bash ./scripts/install_python_deps.sh`
+2. Prepare and start Docker test environment:
+   `bash ./scripts/setup_docker_test_env.sh`
+3. Run orchestration with an advanced fault-injection profile:
+   `python3 ./Orchestration.py <LOG_DIR> ./data_collection/configs/DataCollect_fault_injection_matrix.yaml`
+
+## Testing Optimization Notes
+
+Recent improvements focus on four goals:
+
+1. More diverse fault injection conditions:
+   - `SweepValues` supports explicit non-linear test points.
+   - `SweepMode` supports `linear` and `log` sweeps.
+   - `AdjustHost` can target `carol`, `moon`, or `both`.
+   - `AddParams` can combine delay/loss/reorder/duplicate/corrupt in one profile.
+
+2. More robust collection code:
+   - Config parsing now validates required sections and normalizes fields.
+   - Docker command execution uses retries (`CommandRetries`).
+   - Cleanup is guaranteed by `finally` logic even after runtime errors.
+   - `TrafficCommand` is configurable for custom traffic generation.
+
+3. Better image generation:
+   - Numeric extraction now supports decimal values.
+   - Plots include scatter + trend line + standard deviation ribbon.
+   - Output naming is sanitized for filesystem safety.
+   - Axis scaling is more stable across sparse and dense test runs.
+
+4. Better test configurations:
+   - `requirements.txt` added for deterministic Python setup.
+   - `DataCollect_fault_injection_matrix.yaml` added as a richer template.
+
 ***You did it! The required resources are now installed!***
 
 

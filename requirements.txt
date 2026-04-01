@@ -1,0 +1,7 @@
+numpy>=1.24
+pandas>=2.0
+pyyaml>=6.0
+tqdm>=4.66
+python-on-whales>=0.71
+plotnine>=0.13
+IPython>=8.0
