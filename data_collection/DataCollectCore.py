@@ -303,6 +303,8 @@ def RunConfig(ymlConfig, log_dir, plvl):
             with open(f"{log_local_path}runstats.txt", "a", encoding="utf-8") as f:
                 f.writelines(
                     log_name
+                    + "; ScenarioNote: "
+                    + note
                     + "; Additional Params: "
                     + c_add_params
                     + "; tc_command: "

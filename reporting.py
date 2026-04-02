@@ -31,6 +31,10 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
         lines.append(f"- Algorithms: {', '.join(sorted(run_log_stats_df['Algorithm'].dropna().astype(str).unique().tolist()))}")
     if "VariParam" in run_log_stats_df.columns:
         lines.append(f"- VariParams: {', '.join(sorted(run_log_stats_df['VariParam'].dropna().astype(str).unique().tolist()))}")
+    if "ScenarioCase" in run_log_stats_df.columns:
+        cases = sorted([x for x in run_log_stats_df['ScenarioCase'].dropna().astype(str).unique().tolist() if x])
+        if cases:
+            lines.append(f"- ScenarioCases: {', '.join(cases)}")
     lines.append("")
 
     lines.append("## Key Metrics (mean by Algorithm x VariParam)")
@@ -72,6 +76,45 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
     else:
         lines.append("Insufficient columns to generate grouped metric table.")
     lines.append("")
+
+    if "ScenarioCase" in run_log_stats_df.columns:
+        case_cols = [
+            c
+            for c in [
+                "ScenarioCase",
+                "Algorithm",
+                "mean",
+                "median",
+                "p50",
+                "p95",
+                "p99",
+                "ConnectionPercent",
+                "IterationTime",
+            ]
+            if c in run_log_stats_df.columns
+        ]
+        if len(case_cols) >= 3:
+            lines.append("## Key Metrics (mean by ScenarioCase x Algorithm)")
+            lines.append("")
+            grouped_case = (
+                run_log_stats_df[case_cols]
+                .groupby([c for c in ["ScenarioCase", "Algorithm"] if c in case_cols], dropna=False)
+                .mean(numeric_only=True)
+                .reset_index()
+            )
+            lines.append("| ScenarioCase | Algorithm | mean | median | p50 | p95 | p99 | ConnectionPercent | IterationTime |")
+            lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+            for _, r in grouped_case.iterrows():
+                cp = _fmt_num(r.get("ConnectionPercent", ""))
+                if cp != "":
+                    try:
+                        cp = f"{float(cp) * 100:.2f}%"
+                    except Exception:  # noqa: BLE001
+                        pass
+                lines.append(
+                    f"| {r.get('ScenarioCase', '')} | {r.get('Algorithm', '')} | {_fmt_num(r.get('mean', ''))} | {_fmt_num(r.get('median', ''))} | {_fmt_num(r.get('p50', ''))} | {_fmt_num(r.get('p95', ''))} | {_fmt_num(r.get('p99', ''))} | {cp} | {_fmt_num(r.get('IterationTime', ''))} |"
+                )
+            lines.append("")
 
     lines.append("## Plot Audit")
     lines.append("")

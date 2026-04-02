@@ -4,6 +4,27 @@
 
 import re
 
+
+def _split_scenario_note(note_value):
+    text = str(note_value or '').strip()
+    if not text:
+        return '', ''
+    parts = text.split('__')
+    if len(parts) == 1:
+        return text, ''
+    return '__'.join(parts[:-1]), parts[-1]
+
+
+def _extract_scenario_note_from_text(text_value):
+    text = str(text_value or '')
+    match = re.search(r'iter_\d+_(.+)\.log$', text)
+    if match:
+        return match.group(1)
+    match = re.search(r'([a-z0-9_]+__(?:composite__)?[a-z0-9_]+)\.log$', text)
+    if match:
+        return match.group(1)
+    return ''
+
 def MarkLogs(DF,plvl):
     # Mark Logs looks for the string 'baseline' in the logs and marks it as as Baseline (Ture /False)
     # It also marks the Algorithm as Diffie-Helman or PostQuantum
@@ -34,6 +55,17 @@ def MarkLogs(DF,plvl):
     # Add column to DataFrame based on the mask
     DF['Baseline'] = Bmask.any(axis=1)
     DF['Algorithm'] = DF.apply(classify_algo, axis=1)
+    scenario_series = None
+    if 'ScenarioNote' in DF.columns:
+        scenario_series = DF['ScenarioNote'].fillna('').astype(str)
+        scenario_series = scenario_series.where(scenario_series.str.len() > 0, None)
+    if scenario_series is None or scenario_series.isna().all():
+        source_series = DF['FileName'] if 'FileName' in DF.columns else DF.get('Source', '')
+        scenario_series = source_series.apply(_extract_scenario_note_from_text) if hasattr(source_series, 'apply') else pd.Series([''] * len(DF), index=DF.index)
+
+    split_vals = scenario_series.fillna('').apply(_split_scenario_note)
+    DF['ScenarioGroup'] = split_vals.apply(lambda x: x[0])
+    DF['ScenarioCase'] = split_vals.apply(lambda x: x[1])
     
     if sum(Bmask.any(axis=1)==True) == 0:
         if not DF['Algorithm'].eq('Classic-KEX + Classic-Cert').any() and sum(DHmask.any(axis=1)==True) == 0:

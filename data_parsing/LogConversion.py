@@ -148,6 +148,7 @@ def RunStats(log_dir, FileMode):
                 res = res.removeprefix("['")
                 res = res.removesuffix("']")
                 tc_args = res.split()
+                scenario_note = ''
                 parameters = ''
                 variParam = ''
                 tc = ''
@@ -161,6 +162,11 @@ def RunStats(log_dir, FileMode):
                                 variParam = 'VariParam: ' + '"' + tc_args[8] + '",'
                                 for i in range(8, len(tc_args)-1,2):
                                     parameters = parameters + tc_args[i] + ': "' + tc_args[i+1] + '",'
+
+                res = [i for i in line if 'ScenarioNote' in i]
+                res = str(res).split()
+                if len(res) >= 2:
+                    scenario_note = res[2]
                                 
 
                 # using list comprehension + in 
@@ -186,6 +192,7 @@ def RunStats(log_dir, FileMode):
                 
                 runstats_temp = ','.join(['FilePath: ' + str(x.parent) + '/', 'Source: ' + str(x.name), \
                                         'FileName: ' + logfilename[-1], 'TotalTime: ' + ts, 'IterationTime: ' + IterationTime,
+                                        'ScenarioNote: ' + scenario_note,
                                         'tc_cmd_str: "' + line[2].replace('tc_command: ','') + '"',
                                         tc, variParam, parameters])
                 runstats_temp = runstats_temp.replace(',,',',')
