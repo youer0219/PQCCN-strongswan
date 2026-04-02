@@ -36,7 +36,8 @@ def MarkLogs(DF,plvl):
     DF['Algorithm'] = DF.apply(classify_algo, axis=1)
     
     if sum(Bmask.any(axis=1)==True) == 0:
-        print('No Baseline Found, switching to DH as Baseline')
+        if not DF['Algorithm'].eq('Classic-KEX + Classic-Cert').any() and sum(DHmask.any(axis=1)==True) == 0:
+            print('No Baseline markers found; using Algorithm classification for baseline labels')
         DF['Baseline'] = DHmask.any(axis=1)
     # Keep backward-compatible baseline marker semantics.
     DF['Baseline'] = DF['Algorithm'].eq('Classic-KEX + Classic-Cert')

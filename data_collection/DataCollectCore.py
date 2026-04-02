@@ -85,6 +85,17 @@ def _exec_with_retry(docker: DockerClient, host: str, command: str, retries=1, p
     return False
 
 
+def _cleanup_qdisc(docker: DockerClient, host: str, plvl: int):
+    try:
+        docker.execute(host, shlex.split("tc qdisc del dev eth0 root"), detach=False)
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc)
+        if "Cannot delete qdisc with handle of zero" in msg:
+            return
+        if plvl > 0:
+            print(f"[{host}] qdisc cleanup warning: {exc}")
+
+
 def _target_hosts(adjust_host: str, mirror_moon: bool) -> List[str]:
     mode = str(adjust_host or "carol").strip().lower()
     if mode == "both":
@@ -310,8 +321,8 @@ def RunConfig(ymlConfig, log_dir, plvl):
     finally:
         if pLvl > 0:
             print(" -- Wrapping Up Run -- ")
-        _exec_with_retry(docker, "carol", "tc qdisc del dev eth0 root", retries=1, plvl=pLvl)
-        _exec_with_retry(docker, "moon", "tc qdisc del dev eth0 root", retries=1, plvl=pLvl)
+        _cleanup_qdisc(docker, "carol", pLvl)
+        _cleanup_qdisc(docker, "moon", pLvl)
         docker.compose.down()
 
     return time.perf_counter() - startrun_tic

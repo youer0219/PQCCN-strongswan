@@ -19,10 +19,36 @@ def get_Ike_State(logfile):
 
 def Get_Ike_State_Stats(df):
 
+    def _empty_stats(total=0, conn_pct=np.nan):
+        return {
+            'Q3': np.nan,
+            'Q1': np.nan,
+            'IQR': np.nan,
+            'max': np.nan,
+            'min': np.nan,
+            'range': np.nan,
+            'mean': np.nan,
+            'median': np.nan,
+            'p50': np.nan,
+            'p95': np.nan,
+            'p99': np.nan,
+            'stdDev': np.nan,
+            'Outliers': np.nan,
+            'TotalConnections': int(total),
+            'ConnectionPercent': conn_pct,
+        }
+
+    if df is None or len(df.columns) == 0:
+        return _empty_stats()
+
+    required_cols = {'NewState', 'Time'}
+    if not required_cols.issubset(set(df.columns)):
+        return _empty_stats()
+
     EST = df.loc[(df.loc[:,"NewState"]=="ESTABLISHED"), :]
     CON = df.loc[(df.loc[:,"NewState"]=="CONNECTING"), :]
 
-    Deltas = ''
+    Deltas = np.array([], dtype=float)
     Q3 = np.nan
     Q1 = np.nan
     iqr = np.nan
@@ -39,15 +65,8 @@ def Get_Ike_State_Stats(df):
     ConnectionPercent = 0
     Outliers = np.nan
 
-    if len(EST) <= len(CON):
-        idx = np.linspace(0, len(EST.index)-1, len(EST.index)).astype(int)
-        for i in idx:
-            if i == 0:
-                Deltas = EST.Time.values[i] - CON.Time.values[i]
-            else:
-                Deltas = np.append(Deltas, EST.Time.values[i] - CON.Time.values[i])
-    else:
-        print("More Established connections than attempted connections???")
+    if len(EST) <= len(CON) and len(EST) > 0:
+        Deltas = (EST.Time.values[:len(EST)] - CON.Time.values[:len(EST)]).astype(float)
 
 
 
@@ -55,43 +74,46 @@ def Get_Ike_State_Stats(df):
 
     #df.loc[(df.loc[:,"NewState"]=="ESTABLISHED"), ["Deltas"]] = Deltas
     if len(EST) <= len(CON):
-        try:
-            len(Deltas)
-            if len(Deltas) > 0:
-                Q3, Q1 = np.percentile(Deltas, [75 ,25])
+        if len(Deltas) > 0:
+            if len(Deltas) >= 4:
+                Q3, Q1 = np.percentile(Deltas, [75, 25])
                 iqr = Q3 - Q1
-                lower = Q1 - 1.5*iqr
-                upper = Q3 + 1.5*iqr
-                
-                # Create arrays of Boolean values indicating the outlier rows
+                lower = Q1 - 1.5 * iqr
+                upper = Q3 + 1.5 * iqr
                 upper_array = np.where(Deltas >= upper)[0]
                 lower_array = np.where(Deltas <= lower)[0]
                 drop_array = np.zeros(len(Deltas), dtype=bool)
-                drop_array[upper_array] = True  # Set the upper outlier rows to True
-                drop_array[lower_array] = True  # Set the lower outlier rows to True
-                if sum(drop_array) < len(Deltas)/4:
-                    keep_array = ~drop_array        # Invert the drop_array to get the keep_array
+                drop_array[upper_array] = True
+                drop_array[lower_array] = True
+                if sum(drop_array) < len(Deltas) / 4:
+                    keep_array = ~drop_array
                 else:
-                    keep_array = np.ones(len(Deltas), dtype=bool) # Keep all rows if more than 25% are outliers
-       
+                    keep_array = np.ones(len(Deltas), dtype=bool)
+            else:
+                keep_array = np.ones(len(Deltas), dtype=bool)
+                drop_array = np.zeros(len(Deltas), dtype=bool)
 
             max = np.max(Deltas)
             min = np.min(Deltas)
             range = max - min
-            mean = np.mean(Deltas[keep_array])  # Only use the non-outlier rows
+            mean = np.mean(Deltas[keep_array])
             median = np.median(Deltas)
             p50 = np.percentile(Deltas, 50)
             p95 = np.percentile(Deltas, 95)
             p99 = np.percentile(Deltas, 99)
             stdDev = np.std(Deltas[keep_array])
-            Outliers = sum(drop_array)
+            Outliers = int(sum(drop_array))
             TotalConnections = len(Deltas)
-        except:
+        else:
             TotalConnections = len(EST.index)
-            pass
-        
 
-        ConnectionPercent = len(EST.index)/(len(CON.index))
+        if len(CON.index) > 0:
+            ConnectionPercent = len(EST.index) / (len(CON.index))
+        else:
+            ConnectionPercent = np.nan
+
+    if TotalConnections == 0 and len(EST.index) == 0 and len(CON.index) == 0:
+        return _empty_stats(total=0, conn_pct=np.nan)
 
 
 
