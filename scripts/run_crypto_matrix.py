@@ -3,7 +3,7 @@
 
 Scenarios:
 1) Classic KEX + Classic Cert
-2) Pure-PQ KEX + PQ Cert
+2) Hybrid(1PQ) KEX + PQ Cert
 3) Hybrid KEX (Classic+PQ) + PQ Cert
 
 This script generates YAML configs on the fly, runs Orchestration.py once, and
@@ -225,14 +225,14 @@ def main() -> int:
             "compose": "./pq-strongswan/baseline-docker-compose.yml",
         },
         {
-            "name": "purepq_pqcert",
-            "label": "PurePQ-KEX + PQ-Cert",
-            "compose": "./pq-strongswan/pq-only-docker-compose.yml",
+            "name": "hybrid1pq_pqcert",
+            "label": "Hybrid(1PQ)-KEX + PQ-Cert",
+            "compose": "./pq-strongswan/hybrid1pq-docker-compose.yml",
         },
         {
-            "name": "hybridkex_pqcert",
-            "label": "Hybrid-KEX + PQ-Cert",
-            "compose": "./pq-strongswan/docker-compose.yml",
+            "name": "hybrid2pq_pqcert",
+            "label": "Hybrid(2PQ)-KEX + PQ-Cert",
+            "compose": "./pq-strongswan/hybrid2pq-docker-compose.yml",
         },
     ]
 

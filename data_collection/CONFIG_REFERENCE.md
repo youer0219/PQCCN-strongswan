@@ -43,7 +43,7 @@ CoreConfig:
   CommandRetries: 2         # Retry failed commands this many times
   TrafficCommand: "ping -c 2 10.1.0.2"  # Optional traffic during tunnel establishment
   PrintLevel: 1             # Verbosity: 0=silent, 1=normal, 2=verbose
-  compose_files: "./pq-strongswan/docker-compose.yml"
+  compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"
   Note: "Test description"  # Metadata tag for results
 ```
 
@@ -126,7 +126,7 @@ CoreConfig:
   CommandRetries: 2
   TrafficCommand: "ping -c 2 10.1.0.2"
   PrintLevel: 1
-  compose_files: "./pq-strongswan/docker-compose.yml"
+  compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"
   Note: "YOUR_TEST_DESCRIPTION"
 
 Carol_TC_Config:

@@ -95,7 +95,7 @@ configs/
 | `CommandRetries` | int | 2 | Retry failed commands |
 | `TrafficCommand` | string | "ping -c 2 10.1.0.2" | Optional background traffic |
 | `PrintLevel` | int | 0-3 | Verbosity (0=silent, 3=debug) |
-| `compose_files` | string | "./pq-strongswan/docker-compose.yml" | Docker Compose file |
+| `compose_files` | string | "./pq-strongswan/hybrid2pq-docker-compose.yml" | Docker Compose file |
 | `Note` | string | "delay-sweep" | Metadata for results tracking |
 
 ### Constraint Configuration

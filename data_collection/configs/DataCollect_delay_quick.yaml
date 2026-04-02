@@ -7,7 +7,7 @@ CoreConfig:
   CommandRetries: 2
   TrafficCommand: "ping -c 2 10.1.0.2"
   PrintLevel: 1
-  compose_files: "./pq-strongswan/docker-compose.yml"
+  compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"
   Note: "delay-quick"
 
 Carol_TC_Config:

@@ -27,7 +27,7 @@ def _as_bool(value, default=False):
 
 def _normalize_compose_files(compose_value):
     if compose_value is None:
-        return ["./pq-strongswan/docker-compose.yml"]
+        return ["./pq-strongswan/hybrid2pq-docker-compose.yml"]
     if isinstance(compose_value, str):
         return [compose_value]
     if isinstance(compose_value, list):

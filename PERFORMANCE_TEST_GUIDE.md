@@ -228,11 +228,11 @@ EOF
 Use the new matrix runner to execute all of the following in one run:
 
 1. Classic-KEX + Classic-Cert
-2. PurePQ-KEX + PQ-Cert
+2. Hybrid(1PQ)-KEX + PQ-Cert
 3. Hybrid-KEX (Classic+PQ) + PQ-Cert
 
-The pure-PQ mode uses `pq-strongswan/pq-only-docker-compose.yml`.
-The hybrid-KEX mode uses `pq-strongswan/docker-compose.yml` (classic + post-quantum KEX in the same proposal).
+The Hybrid(1PQ) mode uses `pq-strongswan/hybrid1pq-docker-compose.yml`.
+The Hybrid(2PQ)-KEX mode uses `pq-strongswan/hybrid2pq-docker-compose.yml` (x25519 + two post-quantum KEX methods in the same proposal).
 
 ### One-command Matrix Run
 

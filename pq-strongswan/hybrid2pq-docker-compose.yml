@@ -10,6 +10,7 @@ services:
     tty: true
     volumes:
       - ./moon:/etc/swanctl
+      - ./moon/swanctl_hybrid2pq.conf:/etc/swanctl/swanctl.conf
       - ./strongswan.conf:/etc/strongswan.conf
     networks:
       internet:
@@ -29,6 +30,7 @@ services:
     tty: true
     volumes:
       - ./carol:/etc/swanctl
+      - ./carol/swanctl_hybrid2pq.conf:/etc/swanctl/swanctl.conf
       - ./strongswan.conf:/etc/strongswan.conf
     networks:
       internet:

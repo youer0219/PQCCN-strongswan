@@ -56,7 +56,7 @@ The configuration files use a yaml format. The config files has three distinct p
               WSLocalPath: "/"            # Local path to copy the Wireshark logs to.
               MirrorMoon: false           # Do not Mirror the Carol's TC settings to Moon.
               PrintLevel: 1               # Information Display Level for the run.
-              compose_files: "~/PQCCN-strongswan/pq-strongswan/docker-compose.yml"  # Docker compose file location
+              compose_files: "~/PQCCN-strongswan/pq-strongswan/hybrid2pq-docker-compose.yml"  # Docker compose file location
             Carol_TC_Config:    # Carol's Traffic Control settings.
               Constraint1:      # Constraint 1, this is the adjustable constraint.
                 Type: netem     # Type of constraint, netem for network emulation.
@@ -81,7 +81,7 @@ The configuration files use a yaml format. The config files has three distinct p
               WSLocalPath: "/"            # Local path to copy the Wireshark logs to.
               MirrorMoon: false           # Do not Mirror the Carol's TC settings to Moon.
               PrintLevel: 1               # Information Display Level for the run.
-              compose_files: "~/PQCCN-strongswan/pq-strongswan/docker-compose.yml"  # Docker compose file location
+              compose_files: "~/PQCCN-strongswan/pq-strongswan/hybrid2pq-docker-compose.yml"  # Docker compose file location
             Carol_TC_Config:
               Constraint1:
                 Type: netem
@@ -106,7 +106,7 @@ The configuration files use a yaml format. The config files has three distinct p
                   WSLocalPath: "/"            # Local path to copy the Wireshark logs to.
                   MirrorMoon: false           # Do not Mirror the Carol's TC settings to Moon.
                   PrintLevel: 2               # Information Display Level for the run.
-                  compose_files: 'C:\GitHub\PQCCN-strongswan\pq-strongswan\docker-compose.yml'  # Docker compose file location
+                  compose_files: 'C:\GitHub\PQCCN-strongswan\pq-strongswan\hybrid2pq-docker-compose.yml'  # Docker compose file location
                 Carol_TC_Config:  # Carol's Traffic Control settings.
                   Constraint1:      # Constraint 1, this is the adjustable constraint.
                     Type: tbf           # Type of constraint, tbf for token bucket filter.
@@ -131,7 +131,7 @@ The configuration files use a yaml format. The config files has three distinct p
                   WSLocalPath: "/"            # Local path to copy the Wireshark logs to.
                   MirrorMoon: false           # Do not Mirror the Carol's TC settings to Moon.
                   PrintLevel: 1               # Information Display Level for the run.
-                  compose_files: "./pq-strongswan/docker-compose.yml"  # Docker compose file location
+                  compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"  # Docker compose file location
                 Carol_TC_Config:  # Carol's Traffic Control settings.
                   Constraint1:        # Constraint 1, this is the adjustable constraint.
                     Type: netem         # Type of constraint, netem for network emulation.

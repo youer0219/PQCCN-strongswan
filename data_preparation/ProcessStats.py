@@ -36,17 +36,17 @@ def MarkLogs(DF,plvl):
     def classify_algo(row):
         text = ' '.join(str(v).lower() for v in row.values)
 
-        if re.search(r'hybridkex[_-]?pqcert|hybrid[_-]?kex', text):
-            return 'Hybrid-KEX + PQ-Cert'
-        if re.search(r'purepq[_-]?pqcert|pq[_-]?only', text):
-            return 'PurePQ-KEX + PQ-Cert'
+        if re.search(r'hybrid2pq[_-]?pqcert|hybrid[_-]?2pq|hybrid2pq', text):
+            return 'Hybrid(2PQ)-KEX + PQ-Cert'
+        if re.search(r'hybrid1pq[_-]?pqcert|pq[_-]?only', text):
+            return 'Hybrid(1PQ)-KEX + PQ-Cert'
         if re.search(r'classic[_-]?classic|dh[_-]?dh|baseline', text):
             return 'Classic-KEX + Classic-Cert'
         if re.search(r'pq[_-]?pq|postquantum|post-quantum', text):
-            return 'Hybrid-KEX + PQ-Cert'
+            return 'Hybrid(2PQ)-KEX + PQ-Cert'
         if 'dh' in text:
             return 'Classic-KEX + Classic-Cert'
-        return 'Hybrid-KEX + PQ-Cert'
+        return 'Hybrid(2PQ)-KEX + PQ-Cert'
 
     # Search for the string 'al' in all columns
     Bmask = DF.apply(lambda x: x.map(lambda s: search_string(s, 'baseline'.lower())))

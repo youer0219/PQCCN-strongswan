@@ -15,7 +15,7 @@ CoreConfig:           # Core configuration for test execution
   CommandRetries: 2   # Number of retries for failed commands
   TrafficCommand: "ping -c 2 10.1.0.2"  # Optional: traffic generation during tunnel setup (for realistic load)
   PrintLevel: 1       # Verbosity level (0=silent, 1=normal, 2=verbose, 3=debug)
-  compose_files: "./pq-strongswan/docker-compose.yml"  # Docker Compose file location
+  compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"  # Docker Compose file location
   Note: "YOUR_TEST_SCENARIO_DESCRIPTION"  # Metadata: appears in results and reports
 
 # Traffic Control Configuration for Carol (initiator)

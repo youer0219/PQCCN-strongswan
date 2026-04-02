@@ -9,8 +9,8 @@ services:
     stdin_open: true
     tty: true
     volumes:
-      - ./moon:/etc/swanctl
-      - ./moon/swanctl_pq_only.conf:/etc/swanctl/swanctl.conf
+      - ./moon/DH:/etc/swanctl
+      - ./moon/swanctl_hybrid2pq_cert.conf:/etc/swanctl/swanctl.conf
       - ./strongswan.conf:/etc/strongswan.conf
     networks:
       internet:
@@ -29,8 +29,8 @@ services:
     stdin_open: true
     tty: true
     volumes:
-      - ./carol:/etc/swanctl
-      - ./carol/swanctl_pq_only.conf:/etc/swanctl/swanctl.conf
+      - ./carol/DH:/etc/swanctl
+      - ./carol/swanctl_hybrid2pq_cert.conf:/etc/swanctl/swanctl.conf
       - ./strongswan.conf:/etc/strongswan.conf
     networks:
       internet:

@@ -23,7 +23,7 @@ if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
 fi
 
 echo "[4/5] Starting compose services..."
-docker compose -f "$COMPOSE_DIR/docker-compose.yml" up -d
+docker compose -f "$COMPOSE_DIR/hybrid2pq-docker-compose.yml" up -d
 
 echo "[5/5] Verifying containers..."
 docker ps --filter "name=moon" --filter "name=carol"

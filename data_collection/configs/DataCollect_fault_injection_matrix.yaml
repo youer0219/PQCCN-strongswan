@@ -10,7 +10,7 @@ CoreConfig:
   TrafficCommand: "ping -c 3 10.1.0.2"
   PrintLevel: 2
   compose_files:
-    - "./pq-strongswan/docker-compose.yml"
+    - "./pq-strongswan/hybrid2pq-docker-compose.yml"
   Note: "fault-matrix"
 
 Carol_TC_Config:

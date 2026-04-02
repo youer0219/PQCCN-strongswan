@@ -16,8 +16,8 @@ Let's walk through building the docker container and installing required python 
 
 1. Open a terminal console
 2. Locate docker composer file
-   Navigate to the folder with the docker configuration file: docker-compose.yml
-   Generally the path may look like ```~/strongX509/pq-strongswan/docker-compose.yml```
+   Navigate to the folder with the docker configuration file: hybrid2pq-docker-compose.yml
+   Generally the path may look like ```~/strongX509/pq-strongswan/hybrid2pq-docker-compose.yml```
    If you are using our included fork of pq-strongswan the path will simply be
    ```PQCCN-strongswan/pq-stronswan```
 

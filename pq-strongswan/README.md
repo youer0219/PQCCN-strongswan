@@ -4,8 +4,8 @@ This is a branch of pq-strongswan which was created by [Andreas Steffen][AS] and
 The notes below are from the main strongX509/Docker/pq-strongswan readme file, with minor changes to reflect our branches updates to configuration files. 
 Sepcifically the following files were modified:
 - strongswan.conf
-- moon/swanctl.conf
-- carol/swanctl.conf
+- moon/swanctl_hybrid2pq.conf
+- carol/swanctl_hybrid2pq.conf
 
 # pq-strongswan
 
