@@ -70,13 +70,23 @@ def _rtt_to_delay_values(rtt_values_ms: List[float]) -> List[float]:
     return [round(v / 2.0, 4) for v in rtt_values_ms]
 
 
-def _core_config(compose_file: str, note: str, iterations: int, max_time_s: int, traffic_cmd: str) -> Dict:
+def _core_config(
+    compose_file: str,
+    note: str,
+    iterations: int,
+    max_time_s: int,
+    traffic_cmd: str,
+    warmup_iterations: int,
+    warmup_scope: str,
+) -> Dict:
     return {
         "TC_Iterations": int(iterations),
         "MaxTimeS": int(max_time_s),
         "RemotePath": "/var/log/charon.log",
         "CommandRetries": 2,
         "TrafficCommand": traffic_cmd,
+        "WarmupIterations": int(warmup_iterations),
+        "WarmupScope": str(warmup_scope),
         "PrintLevel": 1,
         "compose_files": compose_file,
         "Note": note,
@@ -186,6 +196,13 @@ def main() -> int:
     parser.add_argument("--static-rate-kbit", type=float, default=4000, help="Static rate kbit used in non-rate profiles")
     parser.add_argument("--jitter-ms", type=float, default=0.0, help="Optional jitter (ms) paired with delay")
     parser.add_argument("--iterations", type=int, default=10, help="IKE iterations per sweep point")
+    parser.add_argument("--warmup-iters", type=int, default=3, help="Warm-up IKE iterations before formal sampling")
+    parser.add_argument(
+        "--warmup-scope",
+        choices=["per_config", "per_point", "off"],
+        default="per_config",
+        help="When to run warm-up iterations",
+    )
     parser.add_argument("--max-time-s", type=int, default=7200, help="Max runtime budget per config")
     parser.add_argument("--traffic-cmd", default="ping -c 2 10.1.0.2", help="Traffic command during each iteration")
     parser.add_argument("--print-level", type=int, default=1, help="Pipeline print level")
@@ -249,6 +266,8 @@ def main() -> int:
                         iterations=args.iterations,
                         max_time_s=args.max_time_s,
                         traffic_cmd=args.traffic_cmd,
+                        warmup_iterations=args.warmup_iters,
+                        warmup_scope=args.warmup_scope,
                     ),
                     "Carol_TC_Config": {
                         "Constraint1": con1,
@@ -272,6 +291,8 @@ def main() -> int:
                         iterations=args.iterations,
                         max_time_s=args.max_time_s,
                         traffic_cmd=args.traffic_cmd,
+                        warmup_iterations=args.warmup_iters,
+                        warmup_scope=args.warmup_scope,
                     ),
                     "Carol_TC_Config": {
                         "Constraint1": con1,
@@ -297,6 +318,7 @@ def main() -> int:
     print(f"  Result dir : {result_dir}")
     print(f"  Profiles   : {', '.join(profile_list)}")
     print(f"  Scenarios  : {len(scenarios)}")
+    print(f"  Warm-up    : {args.warmup_iters} iterations ({args.warmup_scope})")
     print(f"  Iterations : {args.iterations} per sweep point")
     print(f"  Configs    : {len(generated)} files in {cfg_dir}")
 

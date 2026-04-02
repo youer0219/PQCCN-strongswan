@@ -107,6 +107,42 @@ def _target_hosts(adjust_host: str, mirror_moon: bool) -> List[str]:
     return ["carol"]
 
 
+def _resolve_warmup_config(core: Dict) -> Tuple[int, str]:
+    warmup_iterations = max(0, int(core.get("WarmupIterations", 0) or 0))
+    warmup_scope = str(core.get("WarmupScope", "per_config")).strip().lower()
+    if warmup_iterations == 0 or warmup_scope == "off":
+        return 0, "off"
+    if warmup_scope not in {"per_config", "per_point"}:
+        raise ValueError("WarmupScope must be one of: per_config, per_point, off")
+    return warmup_iterations, warmup_scope
+
+
+def _clear_remote_log(docker: DockerClient, host: str, remote_path: str, retries: int, plvl: int):
+    _exec_with_retry(docker, host, f"sh -lc \"echo 'newlog' > {remote_path}\"", retries=retries, plvl=plvl)
+
+
+def _run_iteration_batch(
+    docker: DockerClient,
+    traffic_cmd: str,
+    ipsec_n: int,
+    retries: int,
+    plvl: int,
+    run_start_tic: float | None = None,
+    elapsed_offset: float = 0.0,
+    max_run_time: float | None = None,
+):
+    batch_start = time.perf_counter()
+    for _ in trange(ipsec_n):
+        _exec_with_retry(docker, "carol", "swanctl --initiate --child net", retries=retries, plvl=plvl)
+        _exec_with_retry(docker, "carol", traffic_cmd, retries=retries, plvl=plvl)
+        _exec_with_retry(docker, "carol", "swanctl --terminate --ike home", retries=retries, plvl=plvl)
+        if run_start_tic is not None and max_run_time is not None:
+            effective_elapsed = time.perf_counter() - run_start_tic - elapsed_offset
+            if effective_elapsed > max_run_time:
+                break
+    return time.perf_counter() - batch_start
+
+
 def _constraint_to_cmd(prefix: str, item: Dict, value=None, add_params="") -> str:
     ctype = item["Type"]
     c = item["Constraint"]
@@ -182,6 +218,7 @@ def RunConfig(ymlConfig, log_dir, plvl):
     retries = max(1, int(core.get("CommandRetries", 1)))
     traffic_cmd = str(core.get("TrafficCommand", "ping -c 2 10.1.0.2"))
     ipsec_n = _resolve_iteration_count(core)
+    warmup_n, warmup_scope = _resolve_warmup_config(core)
 
     if pLvl > 0:
         print("\n\nCORE CONFIG")
@@ -201,7 +238,7 @@ def RunConfig(ymlConfig, log_dir, plvl):
 
     base_carol = carol_cfg.get("Constraint1") if carol_cfg else None
     base_moon = moon_cfg.get("Constraint1") if moon_cfg else None
-    startrun_tic = time.perf_counter()
+    warmup_elapsed_total = 0.0
 
     try:
         if not fresh_run:
@@ -244,6 +281,15 @@ def RunConfig(ymlConfig, log_dir, plvl):
             _exec_with_retry(docker, "moon", starter, retries=retries, plvl=pLvl)
             _apply_static_constraints(docker, "moon", base_moon, extra_items, retries, pLvl)
 
+        if warmup_n > 0 and warmup_scope == "per_config":
+            if pLvl > 0:
+                print(" -- Warm-up Run (per_config) -- ")
+            warmup_elapsed_total += _run_iteration_batch(docker, traffic_cmd, warmup_n, retries, pLvl)
+            _clear_remote_log(docker, "carol", remote_path, retries, pLvl)
+            _exec_with_retry(docker, "carol", "swanctl --reload-settings", retries=retries, plvl=pLvl)
+            time.sleep(1)
+
+        startrun_tic = time.perf_counter()
         time.sleep(1)
         if pLvl > 0:
             print(" -- Starting Data Collection Run -- ")
@@ -259,6 +305,7 @@ def RunConfig(ymlConfig, log_dir, plvl):
             l1_tic = time.perf_counter()
             c_add_params = ""
             tc_cmd = ""
+            warmup_elapsed_this_point = 0.0
 
             if base_carol:
                 c_add_params = _combine_additional_constraints(base_carol, [v for k, v in carol_cfg.items() if k != "Constraint1"])
@@ -269,12 +316,25 @@ def RunConfig(ymlConfig, log_dir, plvl):
                 if pLvl > 2:
                     print(f"Updated constraints with: {tc_cmd}")
 
-            for _ in trange(ipsec_n):
-                _exec_with_retry(docker, "carol", "swanctl --initiate --child net", retries=retries, plvl=pLvl)
-                _exec_with_retry(docker, "carol", traffic_cmd, retries=retries, plvl=pLvl)
-                _exec_with_retry(docker, "carol", "swanctl --terminate --ike home", retries=retries, plvl=pLvl)
-                if time.perf_counter() - startrun_tic > max_run_time:
-                    break
+            if warmup_n > 0 and warmup_scope == "per_point":
+                if pLvl > 0:
+                    print(f" -- Warm-up Run (point {i + 1}/{len(c_vals)}) -- ")
+                warmup_elapsed_this_point = _run_iteration_batch(docker, traffic_cmd, warmup_n, retries, pLvl)
+                warmup_elapsed_total += warmup_elapsed_this_point
+                _clear_remote_log(docker, "carol", remote_path, retries, pLvl)
+                _exec_with_retry(docker, "carol", "swanctl --reload-settings", retries=retries, plvl=pLvl)
+                time.sleep(1)
+
+            _run_iteration_batch(
+                docker,
+                traffic_cmd,
+                ipsec_n,
+                retries,
+                pLvl,
+                run_start_tic=startrun_tic,
+                elapsed_offset=warmup_elapsed_total,
+                max_run_time=max_run_time,
+            )
 
             date_time = time.strftime("%Y%m%d_%H%M")
             if base_carol:
@@ -289,11 +349,11 @@ def RunConfig(ymlConfig, log_dir, plvl):
             except Exception as exc:  # noqa: BLE001
                 if pLvl > 0:
                     print(f"copy log failed: {exc}")
-            _exec_with_retry(docker, "carol", "sh -lc \"echo 'newlog' > /var/log/charon.log\"", retries=retries, plvl=pLvl)
+            _clear_remote_log(docker, "carol", remote_path, retries, pLvl)
             _exec_with_retry(docker, "carol", "swanctl --reload-settings", retries=retries, plvl=pLvl)
 
-            total_time = time.perf_counter() - startrun_tic
-            l1_time = time.perf_counter() - l1_tic
+            total_time = time.perf_counter() - startrun_tic - warmup_elapsed_total
+            l1_time = time.perf_counter() - l1_tic - warmup_elapsed_this_point
             est_rem = (len(c_vals) - i - 1) * l1_time
             if pLvl > 1:
                 print(f"Total Time: {total_time} seconds")
@@ -317,7 +377,7 @@ def RunConfig(ymlConfig, log_dir, plvl):
                     + " seconds\n"
                 )
 
-            if time.perf_counter() - startrun_tic > max_run_time:
+            if time.perf_counter() - startrun_tic - warmup_elapsed_total > max_run_time:
                 break
 
     finally:
