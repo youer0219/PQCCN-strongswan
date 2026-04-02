@@ -13,11 +13,16 @@ produces comparable plots and reports (including p50/p95/p99 metrics).
 from __future__ import annotations
 
 import argparse
+import shlex
 import subprocess
+import time
 from pathlib import Path
 from typing import Dict, List
 
 import yaml
+
+
+SUPPORTED_PROFILES = {"rtt", "loss", "rate", "mixed"}
 
 
 def _parse_list(raw: str, cast=float) -> List[float]:
@@ -116,6 +121,13 @@ def _write_yaml(path: Path, data: Dict) -> None:
         yaml.safe_dump(data, f, sort_keys=False)
 
 
+def _preview_paths(paths: List[Path], max_items: int = 3) -> str:
+    if len(paths) <= max_items:
+        return "\n".join(f"  - {p}" for p in paths)
+    head = "\n".join(f"  - {p}" for p in paths[:max_items])
+    return f"{head}\n  ... ({len(paths) - max_items} more)"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run 3 crypto scenarios with configurable network sweeps")
     parser.add_argument("--result-dir", default="./results/crypto_matrix", help="Output directory for logs and plots")
@@ -135,6 +147,8 @@ def main() -> int:
     parser.add_argument("--traffic-cmd", default="ping -c 2 10.1.0.2", help="Traffic command during each iteration")
     parser.add_argument("--print-level", type=int, default=1, help="Pipeline print level")
     parser.add_argument("--collect-print-level", type=int, default=1, help="Collector print level")
+    parser.add_argument("--show-configs", action="store_true", help="Print all generated config paths")
+    parser.add_argument("--dry-run", action="store_true", help="Generate configs and print command only")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -145,6 +159,11 @@ def main() -> int:
     profile_list = [p.strip().lower() for p in args.profiles.split(",") if p.strip()]
     if not profile_list:
         raise ValueError("At least one profile is required")
+    invalid = [p for p in profile_list if p not in SUPPORTED_PROFILES]
+    if invalid:
+        raise ValueError(
+            f"Unsupported profile(s): {', '.join(invalid)}. Supported: {', '.join(sorted(SUPPORTED_PROFILES))}"
+        )
 
     rtt_values = _parse_list(args.rtt_ms, float)
     delay_values = _rtt_to_delay_values(rtt_values)
@@ -200,16 +219,42 @@ def main() -> int:
         str(args.collect_print_level),
     ]
 
-    print("Generated configs:")
-    for p in generated:
-        print(f"  - {p}")
+    print("[Matrix] Plan")
+    print(f"  Result dir : {result_dir}")
+    print(f"  Profiles   : {', '.join(profile_list)}")
+    print(f"  Scenarios  : {len(scenarios)}")
+    print(f"  Iterations : {args.iterations} per sweep point")
+    print(f"  Configs    : {len(generated)} files in {cfg_dir}")
 
-    print("\nRunning orchestration...")
-    subprocess.run(orch_cmd, check=True, cwd=repo_root)
+    if args.show_configs:
+        print("[Matrix] Generated config files:")
+        print("\n".join(f"  - {p}" for p in generated))
+    else:
+        print("[Matrix] Config preview:")
+        print(_preview_paths(generated))
 
-    print("\nDone.")
-    print(f"Results: {result_dir}")
-    print(f"Generated configs: {cfg_dir}")
+    print("[Matrix] Orchestration command:")
+    print(f"  {shlex.join(orch_cmd)}")
+
+    if args.dry_run:
+        print("[Matrix] Dry-run mode enabled. No experiment executed.")
+        return 0
+
+    start = time.perf_counter()
+    print("[Matrix] Running orchestration...")
+    try:
+        subprocess.run(orch_cmd, check=True, cwd=repo_root)
+    except subprocess.CalledProcessError as exc:
+        print(f"[Matrix] FAILED with exit code: {exc.returncode}")
+        print("[Matrix] Tip: run from repo root and keep the command on one line or use '\\' line continuations.")
+        return exc.returncode
+
+    elapsed = time.perf_counter() - start
+    print("[Matrix] Done")
+    print(f"  Duration   : {elapsed:.1f}s")
+    print(f"  Results    : {result_dir}")
+    print(f"  Configs    : {cfg_dir}")
+    print(f"  Report     : {result_dir / 'ExperimentReport.md'}")
     return 0
 
 

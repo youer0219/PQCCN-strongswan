@@ -247,6 +247,18 @@ python3 scripts/run_crypto_matrix.py \
   --iterations 8
 ```
 
+Single-line equivalent (safer when copy/pasting in some terminals):
+
+```bash
+python3 scripts/run_crypto_matrix.py --result-dir ./results/crypto_matrix_$(date +%Y%m%d_%H%M) --profiles rtt,loss,rate,mixed --rtt-ms 0,20,50,100 --loss-pct 0,0.1,0.5,1,2 --rate-kbit 4000,2000,1000,512 --jitter-ms 2 --iterations 8
+```
+
+Preview only (generate configs and print execution plan without running):
+
+```bash
+python3 scripts/run_crypto_matrix.py --profiles rtt --rtt-ms 0,50 --iterations 2 --dry-run --show-configs
+```
+
 ### Parameter Notes
 
 - `--rtt-ms`: RTT values (ms). Internally converted to one-way delay for `tc netem`.
