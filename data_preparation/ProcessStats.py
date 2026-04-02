@@ -4,9 +4,18 @@
 
 import re
 
+import pandas as pd
+
+
+def _clean_text_token(value):
+    text = str(value or '').strip()
+    text = text.strip().strip("[](){}")
+    text = text.strip("'\"")
+    return text
+
 
 def _split_scenario_note(note_value):
-    text = str(note_value or '').strip()
+    text = _clean_text_token(note_value)
     if not text:
         return '', ''
     parts = text.split('__')
@@ -16,13 +25,13 @@ def _split_scenario_note(note_value):
 
 
 def _extract_scenario_note_from_text(text_value):
-    text = str(text_value or '')
+    text = _clean_text_token(text_value)
     match = re.search(r'iter_\d+_(.+)\.log$', text)
     if match:
-        return match.group(1)
+        return _clean_text_token(match.group(1))
     match = re.search(r'([a-z0-9_]+__(?:composite__)?[a-z0-9_]+)\.log$', text)
     if match:
-        return match.group(1)
+        return _clean_text_token(match.group(1))
     return ''
 
 def MarkLogs(DF,plvl):

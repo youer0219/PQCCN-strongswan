@@ -242,7 +242,13 @@ def RunConfig(ymlConfig, log_dir, plvl):
 
     try:
         if not fresh_run:
-            docker.compose.down()
+            try:
+                import subprocess
+                subprocess.run(["docker", "rm", "-f", "moon", "carol"], capture_output=True)
+                docker.compose.down(remove_orphans=True)
+            except Exception:
+                pass
+
             if pLvl > 0:
                 print(" -- Starting Docker Containers -- ")
             docker.compose.up(detach=True)
@@ -385,6 +391,9 @@ def RunConfig(ymlConfig, log_dir, plvl):
             print(" -- Wrapping Up Run -- ")
         _cleanup_qdisc(docker, "carol", pLvl)
         _cleanup_qdisc(docker, "moon", pLvl)
-        docker.compose.down()
+        try:
+            docker.compose.down(remove_orphans=True)
+        except Exception:
+            pass
 
     return time.perf_counter() - startrun_tic

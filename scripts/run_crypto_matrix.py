@@ -114,7 +114,7 @@ def _constraint(
 def _build_profile_constraints(profile: str, delay_values: List[float], args, composite_case=None) -> Dict:
     jitter = max(0.0, float(args.jitter_ms))
     loss = max(0.0, float(args.static_loss_pct))
-    rate = max(1.0, float(args.static_rate_kbit))
+    rate = max(0.0, float(args.static_rate_kbit))
 
     if profile == "rtt":
         add = f"{jitter}ms" if jitter > 0 else ""
@@ -156,13 +156,15 @@ def _build_profile_constraints(profile: str, delay_values: List[float], args, co
         delay_ms = round(float(composite_case["rtt_ms"]) / 2.0, 4)
         jitter_case = max(0.0, float(composite_case.get("jitter_ms", 0.0)))
         loss_case = max(0.0, float(composite_case["loss_pct"]))
-        rate_case = max(1.0, float(composite_case["rate_kbit"]))
+        rate_case = max(0.0, float(composite_case["rate_kbit"]))
 
         add_parts = []
         if jitter_case > 0:
             add_parts.append(f"{jitter_case}ms")
-        add_parts.append(f"loss {loss_case}%")
-        add_parts.append(f"rate {rate_case}kbit")
+        if loss_case > 0:
+            add_parts.append(f"loss {loss_case}%")
+        if rate_case > 0:
+            add_parts.append(f"rate {rate_case}kbit")
         return _constraint("delay", [delay_ms], "ms", " ".join(add_parts))
 
     raise ValueError(f"Unsupported profile: {profile}")
@@ -193,7 +195,7 @@ def main() -> int:
     parser.add_argument("--loss-pct", default="0,0.1,0.5,1,2", help="Loss sweep values in %% for loss profile")
     parser.add_argument("--rate-kbit", default="4000,2000,1000,512", help="Rate sweep values in kbit for rate profile")
     parser.add_argument("--static-loss-pct", type=float, default=0.5, help="Static loss %% used in non-loss profiles")
-    parser.add_argument("--static-rate-kbit", type=float, default=4000, help="Static rate kbit used in non-rate profiles")
+    parser.add_argument("--static-rate-kbit", type=float, default=0, help="Static rate kbit used in non-rate profiles (0 = unlimited)")
     parser.add_argument("--jitter-ms", type=float, default=0.0, help="Optional jitter (ms) paired with delay")
     parser.add_argument("--iterations", type=int, default=10, help="IKE iterations per sweep point")
     parser.add_argument("--warmup-iters", type=int, default=3, help="Warm-up IKE iterations before formal sampling")

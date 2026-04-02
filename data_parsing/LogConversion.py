@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -164,9 +165,10 @@ def RunStats(log_dir, FileMode):
                                     parameters = parameters + tc_args[i] + ': "' + tc_args[i+1] + '",'
 
                 res = [i for i in line if 'ScenarioNote' in i]
-                res = str(res).split()
-                if len(res) >= 2:
-                    scenario_note = res[2]
+                res = str(res)
+                match = re.search(r"ScenarioNote:\s*([^\]]+?)\s*(?:'\])?$", res)
+                if match:
+                    scenario_note = match.group(1).strip().strip("\"'[]")
                                 
 
                 # using list comprehension + in 

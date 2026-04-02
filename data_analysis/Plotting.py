@@ -38,6 +38,76 @@ def _safe_limits(min_val, max_val):
     return (min_val, max_val)
 
 
+def _format_param_value(value):
+    if pd.isna(value):
+        return ''
+    try:
+        numeric = float(value)
+    except Exception:  # noqa: BLE001
+        return str(value)
+    if numeric.is_integer():
+        return str(int(numeric))
+    return f'{numeric:.3f}'.rstrip('0').rstrip('.')
+
+
+def _short_group_label(value):
+    text = str(value or '').strip()
+    if '__' in text:
+        return text.split('__', 1)[0]
+    return text
+
+
+def _build_case_label(row, x_col):
+    case = str(row.get('ScenarioCase', '') or '').strip()
+    parts = []
+    if case:
+        parts.append(case)
+    else:
+        parts.append(_format_param_value(row.get(x_col, '')))
+
+    param_bits = []
+    for param_col in ['delay', 'loss', 'rate']:
+        if param_col in row.index and pd.notna(row.get(param_col)):
+            val = row.get(param_col)
+            try:
+                numeric_val = float(val)
+                if numeric_val > 0:
+                    param_bits.append(f"{param_col}={_format_param_value(val)}")
+            except (ValueError, TypeError):
+                param_bits.append(f"{param_col}={str(val)}")
+    if param_bits:
+        parts.append(' / '.join(param_bits))
+    return '\n'.join(parts)
+
+
+def _build_plot_context(df, x_col):
+    groups = [x for x in df.get('ScenarioGroup', pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if x]
+    cases = [x for x in df.get('ScenarioCase', pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if x]
+
+    title_context = ', '.join(sorted({_short_group_label(g) for g in groups if g}))
+    subtitle_bits = []
+    if cases and 'ScenarioCase' in df.columns:
+        for case in sorted(cases):
+            case_rows = df[df['ScenarioCase'].astype(str) == case]
+            if not case_rows.empty:
+                subtitle_bits.append(_build_case_label(case_rows.iloc[0], x_col))
+
+    label_map = {}
+    if 'ScenarioCase' in df.columns:
+        for x_value, group_df in df.groupby(x_col, dropna=False):
+            if not group_df.empty:
+                label_map[x_value] = str(group_df.iloc[0].get('ScenarioCase', '') or '').strip() or _format_param_value(x_value)
+
+    return title_context, '\n'.join(subtitle_bits), label_map
+
+
+def _build_case_axis_label(row, x_col):
+    case = str(row.get('ScenarioCase', '') or '').strip()
+    if case:
+        return case
+    return _format_param_value(row.get(x_col, ''))
+
+
 def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
     os.makedirs(plot_dir, exist_ok=True)
     report_rows = []
@@ -76,178 +146,156 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
         maxval = tmpdf[newcol].max()
         minval, maxval = _safe_limits(minval, maxval)
 
-        # Generate x-axis breaks (5 evenly spaced points to avoid overlapping labels)
-        xbreaks = np.unique(np.linspace(minval, maxval, 5)).tolist()
-        strbreaks = [round(x, 2) for x in xbreaks]  # Round to 2 decimal places for readability
+        plot_context, plot_subtitle, label_map = _build_plot_context(tmpdf, newcol)
 
-        # List of statistics to plot
-        selected_stats = ['mean', 'median', 'p50', 'p95', 'p99', 'ConnectionPercent', 'IterationTime']
+        # Prefer exact sweep values when the sweep is small so labels can show concrete cases.
+        unique_x = sorted(tmpdf[newcol].dropna().unique().tolist())
+        if len(unique_x) <= 8:
+            xbreaks = unique_x
+        else:
+            xbreaks = np.unique(np.linspace(minval, maxval, 5)).tolist()
 
-        for stat in selected_stats:
-            stat_plot = stat
+        xlabels = [label_map.get(x, _format_param_value(x)) for x in xbreaks]
 
-            # Filter out null values for current statistic to avoid NaN in max/min calculations
-            stat_series = tmpdf[stat].dropna()
-            if stat_series.empty:
-                print(f"Warning: No valid data for VariParam={varp}, Stat={stat}, skipping")
-                continue
 
-            # Calculate y-axis minimum value (scalar float - no astype() needed)
-            minval_y = stat_series.min()
 
-            # Calculate median values for Baseline=True/False (handle empty subsets)
-            bl_false_stat = tmpdf[(tmpdf['Baseline'] == False)][stat].dropna()
-            bl_true_stat = tmpdf[(tmpdf['Baseline'] == True)][stat].dropna()
-            median_false = bl_false_stat.median() if not bl_false_stat.empty else 0
-            median_true = bl_true_stat.median() if not bl_true_stat.empty else 0
-            highmed = max(median_false, median_true)
+        plot_df = tmpdf.dropna(subset=[newcol]).copy()
+        if plot_df.empty:
+            continue
 
-            # Calculate y-axis maximum value (handle empty Baseline=False subset)
-            maxval_y = bl_false_stat.max() if not bl_false_stat.empty else highmed
+        # Keep configurations together in one axis instead of splitting into multiple images.
+        plot_df['CaseLabel'] = plot_df.apply(lambda r: _build_case_axis_label(r, newcol), axis=1)
 
-            # Adjust y-axis max if it's smaller than the higher median
-            if maxval_y < highmed:
-                maxval_y = maxval_y + highmed
+        # Chart 1: only percentile metrics (p50/p95/p99) in one image.
+        pct_metrics = [c for c in ['p50', 'p95', 'p99'] if c in plot_df.columns]
+        if pct_metrics:
+            pct_long = plot_df.melt(
+                id_vars=['CaseLabel', 'Algorithm'],
+                value_vars=pct_metrics,
+                var_name='Metric',
+                value_name='Value',
+            ).dropna(subset=['Value'])
 
-            # Special handling for ConnectionPercent (force 0-100 range)
-            if stat == 'ConnectionPercent':
-                minval_y = 0
-                maxval_y = 100
-                stat_plot = 'ConnectionPercent_plot'
-                tmpdf.loc[:, stat_plot] = tmpdf[stat] * 100  # Convert to percentage (safe assignment)
-
-            # Extend y-axis range by 15% to add padding around data points
-            if stat != 'ConnectionPercent':
-                pad = (maxval_y - minval_y) * 0.15 if maxval_y != minval_y else max(1, abs(maxval_y) * 0.15)
-                minval_y = minval_y - pad
-                maxval_y = maxval_y + pad
-
-            minval_y, maxval_y = _safe_limits(minval_y, maxval_y)
-
-            plot_df = tmpdf.dropna(subset=[newcol, stat_plot]).copy()
-            if plot_df.empty:
-                continue
-
-            # Prepare aggregated trends for cleaner readability (mean ± std)
-            trend_df = (
-                plot_df.groupby([newcol, 'Algorithm'], as_index=False)
-                .agg(stat_mean=(stat_plot, 'mean'), stat_std=(stat_plot, 'std'))
-            )
-            trend_df['stat_std'] = trend_df['stat_std'].fillna(0)
-            trend_df['ymin'] = trend_df['stat_mean'] - trend_df['stat_std']
-            trend_df['ymax'] = trend_df['stat_mean'] + trend_df['stat_std']
-
-            # Create scatter plot with plotnine
-            meanplot = (
-                ggplot(plot_df)  # Remove rows with null values for plotting
-                + aes(x=newcol, y=stat_plot, color='Algorithm')
-                + geom_point(alpha=0.55, size=1.8)  # Scatter plot points
-                + geom_line(data=trend_df, mapping=aes(x=newcol, y='stat_mean', color='Algorithm'), size=1.0)
-                + geom_ribbon(
-                    data=trend_df,
-                    mapping=aes(x=newcol, ymin='ymin', ymax='ymax', fill='Algorithm'),
-                    alpha=0.15,
-                    inherit_aes=False,
+            if not pct_long.empty:
+                pct_agg = (
+                    pct_long.groupby(['CaseLabel', 'Algorithm', 'Metric'], as_index=False)
+                    .agg(Value=('Value', 'mean'))
                 )
-                + labs(title=f"{varp} vs. {stat}", x=varp, y=stat)  # Plot titles/labels
-                + scale_x_continuous(breaks=strbreaks, limits=[minval, maxval])  # X-axis scale
-                + scale_y_continuous(limits=[minval_y, maxval_y])  # Y-axis scale
-                + scale_color_manual(values=color_map)
-                + scale_fill_manual(values=color_map)
-                + theme_bw()
-                + theme(
-                    figure_size=(9, 5),
-                    legend_position='top',
-                    panel_grid_minor=element_blank(),
+                pct_agg['CaseMetric'] = pct_agg['CaseLabel'].astype(str) + ' | ' + pct_agg['Metric'].str.upper()
+                pct_agg['CaseMetric'] = pd.Categorical(
+                    pct_agg['CaseMetric'],
+                    categories=[
+                        f"{case} | {metric.upper()}"
+                        for case in plot_df['CaseLabel'].dropna().astype(str).unique().tolist()
+                        for metric in pct_metrics
+                    ],
+                    ordered=True,
                 )
-            )
 
-            # Generate unique filename with timestamp
-            date_time = time.strftime("%Y%m%d_%H%M")
-            file_name = f"{date_time}_{_safe_file_token(varp)}_vs_{_safe_file_token(stat)}.png"
-            
-            # Save plot to specified directory (300 DPI balances quality and file size)
-            ggsave(meanplot, filename=file_name, path=plot_dir, dpi=300)
-
-            # Print confirmation when debug level > 1
-            if plvl > 1:
-                print(f"Plot saved: {file_name}")
-
-            note = "ok"
-            if len(plot_df) < 6:
-                note = "few_points"
-            elif stat == 'ConnectionPercent' and (plot_df[stat_plot].max() > 100 or plot_df[stat_plot].min() < 0):
-                note = "out_of_range_connection_percent"
-
-            report_rows.append(
-                {
-                    'VariParam': varp,
-                    'Stat': stat,
-                    'Points': int(len(plot_df)),
-                    'XMin': float(minval),
-                    'XMax': float(maxval),
-                    'YMin': float(minval_y),
-                    'YMax': float(maxval_y),
-                    'Note': note,
-                    'Image': file_name,
-                }
-            )
-
-        # Additional summary chart: compare p50/p95/p99 in a single figure.
-        pct_cols = [c for c in ['p50', 'p95', 'p99'] if c in tmpdf.columns]
-        if pct_cols:
-            pct_df = tmpdf.dropna(subset=[newcol] + pct_cols).copy()
-            if not pct_df.empty:
-                long_df = pct_df.melt(
-                    id_vars=[newcol, 'Algorithm'],
-                    value_vars=pct_cols,
-                    var_name='Percentile',
-                    value_name='Latency',
-                )
-                long_df = long_df.dropna(subset=['Latency'])
-
-                if not long_df.empty:
-                    y_min = long_df['Latency'].min()
-                    y_max = long_df['Latency'].max()
-                    y_min, y_max = _safe_limits(y_min, y_max)
-
-                    summary_plot = (
-                        ggplot(long_df)
-                        + aes(x=newcol, y='Latency', color='Algorithm', linetype='Percentile')
-                        + geom_line(size=1.0)
-                        + geom_point(alpha=0.7, size=1.8)
-                        + labs(
-                            title=f"{varp} vs. Percentile Latency (P50/P95/P99)",
-                            x=varp,
-                            y='Latency (s)',
-                        )
-                        + scale_x_continuous(breaks=strbreaks, limits=[minval, maxval])
-                        + scale_y_continuous(limits=[y_min, y_max])
-                        + scale_color_manual(values=color_map)
-                        + theme_bw()
-                        + theme(
-                            figure_size=(10, 5.5),
-                            legend_position='top',
-                            panel_grid_minor=element_blank(),
-                        )
+                pct_plot = (
+                    ggplot(pct_agg)
+                    + aes(x='CaseMetric', y='Value', fill='Algorithm')
+                    + geom_col(position=position_dodge(width=0.8), width=0.72, alpha=0.9)
+                    + labs(
+                        title=f"{plot_context + ' | ' if plot_context else ''}{varp} P50/P95/P99",
+                        subtitle=plot_subtitle,
+                        x='Configuration | Percentile',
+                        y='Latency (s)',
                     )
-
-                    date_time = time.strftime("%Y%m%d_%H%M")
-                    summary_file = f"{date_time}_{_safe_file_token(varp)}_percentile_summary.png"
-                    ggsave(summary_plot, filename=summary_file, path=plot_dir, dpi=300)
-
-                    report_rows.append(
-                        {
-                            'VariParam': varp,
-                            'Stat': 'percentile_summary',
-                            'Points': int(len(long_df)),
-                            'XMin': float(minval),
-                            'XMax': float(maxval),
-                            'YMin': float(y_min),
-                            'YMax': float(y_max),
-                            'Note': 'p50_p95_p99_combined',
-                            'Image': summary_file,
-                        }
+                    + scale_fill_manual(values=color_map)
+                    + theme_bw()
+                    + theme(
+                        figure_size=(13, 5.5),
+                        legend_position='top',
+                        panel_grid_minor=element_blank(),
+                        axis_text_x=element_text(rotation=35, ha='right'),
                     )
+                )
+
+                date_time = time.strftime("%Y%m%d_%H%M")
+                pct_file = f"{date_time}_{_safe_file_token(varp)}_percentiles_summary.png"
+                ggsave(pct_plot, filename=pct_file, path=plot_dir, dpi=300)
+
+                report_rows.append(
+                    {
+                        'VariParam': varp,
+                        'Stat': 'percentiles',
+                        'Points': int(len(pct_agg)),
+                        'XMin': 0.0,
+                        'XMax': 0.0,
+                        'YMin': float(pct_agg['Value'].min()),
+                        'YMax': float(pct_agg['Value'].max()),
+                        'Note': 'p50_p95_p99_only',
+                        'Image': pct_file,
+                    }
+                )
+
+        # Chart 2: other key metrics, excluding mean.
+        other_metrics = [c for c in ['median', 'ConnectionPercent', 'IterationTime'] if c in plot_df.columns]
+        if other_metrics:
+            other_df = plot_df.copy()
+            if 'ConnectionPercent' in other_df.columns:
+                other_df['ConnectionPercent'] = other_df['ConnectionPercent'] * 100
+
+            other_long = other_df.melt(
+                id_vars=['CaseLabel', 'Algorithm'],
+                value_vars=other_metrics,
+                var_name='Metric',
+                value_name='Value',
+            ).dropna(subset=['Value'])
+
+            if not other_long.empty:
+                other_agg = (
+                    other_long.groupby(['CaseLabel', 'Algorithm', 'Metric'], as_index=False)
+                    .agg(Value=('Value', 'mean'))
+                )
+                other_agg['CaseMetric'] = other_agg['CaseLabel'].astype(str) + ' | ' + other_agg['Metric']
+                other_agg['CaseMetric'] = pd.Categorical(
+                    other_agg['CaseMetric'],
+                    categories=[
+                        f"{case} | {metric}"
+                        for case in other_df['CaseLabel'].dropna().astype(str).unique().tolist()
+                        for metric in other_metrics
+                    ],
+                    ordered=True,
+                )
+
+                other_plot = (
+                    ggplot(other_agg)
+                    + aes(x='CaseMetric', y='Value', fill='Algorithm')
+                    + geom_col(position=position_dodge(width=0.8), width=0.72, alpha=0.9)
+                    + labs(
+                        title=f"{plot_context + ' | ' if plot_context else ''}{varp} Other Metrics",
+                        subtitle=plot_subtitle,
+                        x='Configuration | Metric',
+                        y='Value',
+                    )
+                    + scale_fill_manual(values=color_map)
+                    + theme_bw()
+                    + theme(
+                        figure_size=(13, 5.5),
+                        legend_position='top',
+                        panel_grid_minor=element_blank(),
+                        axis_text_x=element_text(rotation=35, ha='right'),
+                    )
+                )
+
+                date_time = time.strftime("%Y%m%d_%H%M")
+                other_file = f"{date_time}_{_safe_file_token(varp)}_other_metrics_summary.png"
+                ggsave(other_plot, filename=other_file, path=plot_dir, dpi=300)
+
+                report_rows.append(
+                    {
+                        'VariParam': varp,
+                        'Stat': 'other_metrics',
+                        'Points': int(len(other_agg)),
+                        'XMin': 0.0,
+                        'XMax': 0.0,
+                        'YMin': float(other_agg['Value'].min()),
+                        'YMax': float(other_agg['Value'].max()),
+                        'Note': 'median_connection_iteration',
+                        'Image': other_file,
+                    }
+                )
 
     return pd.DataFrame(report_rows)
