@@ -35,7 +35,21 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
 
     lines.append("## Key Metrics (mean by Algorithm x VariParam)")
     lines.append("")
-    cols = [c for c in ["Algorithm", "VariParam", "mean", "median", "ConnectionPercent", "IterationTime"] if c in run_log_stats_df.columns]
+    cols = [
+        c
+        for c in [
+            "Algorithm",
+            "VariParam",
+            "mean",
+            "median",
+            "p50",
+            "p95",
+            "p99",
+            "ConnectionPercent",
+            "IterationTime",
+        ]
+        if c in run_log_stats_df.columns
+    ]
     if len(cols) >= 3:
         grouped = (
             run_log_stats_df[cols]
@@ -43,8 +57,8 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
             .mean(numeric_only=True)
             .reset_index()
         )
-        lines.append("| Algorithm | VariParam | mean | median | ConnectionPercent | IterationTime |")
-        lines.append("| --- | --- | ---: | ---: | ---: | ---: |")
+        lines.append("| Algorithm | VariParam | mean | median | p50 | p95 | p99 | ConnectionPercent | IterationTime |")
+        lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
         for _, r in grouped.iterrows():
             cp = _fmt_num(r.get("ConnectionPercent", ""))
             if cp != "":
@@ -53,7 +67,7 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
                 except Exception:  # noqa: BLE001
                     pass
             lines.append(
-                f"| {r.get('Algorithm', '')} | {r.get('VariParam', '')} | {_fmt_num(r.get('mean', ''))} | {_fmt_num(r.get('median', ''))} | {cp} | {_fmt_num(r.get('IterationTime', ''))} |"
+                f"| {r.get('Algorithm', '')} | {r.get('VariParam', '')} | {_fmt_num(r.get('mean', ''))} | {_fmt_num(r.get('median', ''))} | {_fmt_num(r.get('p50', ''))} | {_fmt_num(r.get('p95', ''))} | {_fmt_num(r.get('p99', ''))} | {cp} | {_fmt_num(r.get('IterationTime', ''))} |"
             )
     else:
         lines.append("Insufficient columns to generate grouped metric table.")

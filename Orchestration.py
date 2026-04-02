@@ -59,7 +59,7 @@ def main():
     summary_file = str(Path(log_dir) / "RunLogStatsDF_summary.csv")
     summary_cols = [
         c
-        for c in ["Algorithm", "VariParam", "mean", "median", "ConnectionPercent", "IterationTime"]
+        for c in ["Algorithm", "VariParam", "mean", "median", "p50", "p95", "p99", "ConnectionPercent", "IterationTime"]
         if c in run_log_stats_df.columns
     ]
     if summary_cols:

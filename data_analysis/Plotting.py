@@ -10,6 +10,16 @@ import re
 import os
 
 
+ALGO_COLORS = [
+    '#1E88E5',
+    '#E07A1F',
+    '#2E7D32',
+    '#8E24AA',
+    '#D81B60',
+    '#00897B',
+]
+
+
 def _safe_file_token(value):
     return re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(value)).strip("_")
 
@@ -31,6 +41,9 @@ def _safe_limits(min_val, max_val):
 def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
     os.makedirs(plot_dir, exist_ok=True)
     report_rows = []
+
+    algos = [x for x in RunLogStatsDF.get('Algorithm', pd.Series(dtype=str)).dropna().astype(str).unique().tolist()]
+    color_map = {algo: ALGO_COLORS[i % len(ALGO_COLORS)] for i, algo in enumerate(sorted(algos))}
 
     # Iterate through all unique VariParam values (filter out null values)
     for varp in RunLogStatsDF['VariParam'].dropna().unique().tolist():
@@ -68,7 +81,7 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
         strbreaks = [round(x, 2) for x in xbreaks]  # Round to 2 decimal places for readability
 
         # List of statistics to plot
-        selected_stats = ['mean', 'median', 'ConnectionPercent', 'IterationTime']
+        selected_stats = ['mean', 'median', 'p50', 'p95', 'p99', 'ConnectionPercent', 'IterationTime']
 
         for stat in selected_stats:
             stat_plot = stat
@@ -139,8 +152,8 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
                 + labs(title=f"{varp} vs. {stat}", x=varp, y=stat)  # Plot titles/labels
                 + scale_x_continuous(breaks=strbreaks, limits=[minval, maxval])  # X-axis scale
                 + scale_y_continuous(limits=[minval_y, maxval_y])  # Y-axis scale
-                + scale_color_manual(values=['#1E88E5', '#E07A1F'])
-                + scale_fill_manual(values=['#1E88E5', '#E07A1F'])
+                + scale_color_manual(values=color_map)
+                + scale_fill_manual(values=color_map)
                 + theme_bw()
                 + theme(
                     figure_size=(9, 5),
@@ -179,5 +192,62 @@ def PlotVariParam(RunLogStatsDF, plot_dir, plvl):
                     'Image': file_name,
                 }
             )
+
+        # Additional summary chart: compare p50/p95/p99 in a single figure.
+        pct_cols = [c for c in ['p50', 'p95', 'p99'] if c in tmpdf.columns]
+        if pct_cols:
+            pct_df = tmpdf.dropna(subset=[newcol] + pct_cols).copy()
+            if not pct_df.empty:
+                long_df = pct_df.melt(
+                    id_vars=[newcol, 'Algorithm'],
+                    value_vars=pct_cols,
+                    var_name='Percentile',
+                    value_name='Latency',
+                )
+                long_df = long_df.dropna(subset=['Latency'])
+
+                if not long_df.empty:
+                    y_min = long_df['Latency'].min()
+                    y_max = long_df['Latency'].max()
+                    y_min, y_max = _safe_limits(y_min, y_max)
+
+                    summary_plot = (
+                        ggplot(long_df)
+                        + aes(x=newcol, y='Latency', color='Algorithm', linetype='Percentile')
+                        + geom_line(size=1.0)
+                        + geom_point(alpha=0.7, size=1.8)
+                        + labs(
+                            title=f"{varp} vs. Percentile Latency (P50/P95/P99)",
+                            x=varp,
+                            y='Latency (s)',
+                        )
+                        + scale_x_continuous(breaks=strbreaks, limits=[minval, maxval])
+                        + scale_y_continuous(limits=[y_min, y_max])
+                        + scale_color_manual(values=color_map)
+                        + theme_bw()
+                        + theme(
+                            figure_size=(10, 5.5),
+                            legend_position='top',
+                            panel_grid_minor=element_blank(),
+                        )
+                    )
+
+                    date_time = time.strftime("%Y%m%d_%H%M")
+                    summary_file = f"{date_time}_{_safe_file_token(varp)}_percentile_summary.png"
+                    ggsave(summary_plot, filename=summary_file, path=plot_dir, dpi=300)
+
+                    report_rows.append(
+                        {
+                            'VariParam': varp,
+                            'Stat': 'percentile_summary',
+                            'Points': int(len(long_df)),
+                            'XMin': float(minval),
+                            'XMax': float(maxval),
+                            'YMin': float(y_min),
+                            'YMax': float(y_max),
+                            'Note': 'p50_p95_p99_combined',
+                            'Image': summary_file,
+                        }
+                    )
 
     return pd.DataFrame(report_rows)

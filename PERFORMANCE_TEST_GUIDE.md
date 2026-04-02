@@ -220,3 +220,46 @@ df = ProcessLogs.Log_stats('./results/latest', 2)
 generate_experiment_report('./results/latest', df, None)
 EOF
 ```
+
+---
+
+## Crypto Matrix: 3 Security Modes + Parameterized Network Profiles
+
+Use the new matrix runner to execute all of the following in one run:
+
+1. Classic-KEX + Classic-Cert
+2. PurePQ-KEX + PQ-Cert
+3. Hybrid-KEX (Classic+PQ) + PQ-Cert
+
+The pure-PQ mode uses `pq-strongswan/pq-only-docker-compose.yml`.
+The hybrid-KEX mode uses `pq-strongswan/docker-compose.yml` (classic + post-quantum KEX in the same proposal).
+
+### One-command Matrix Run
+
+```bash
+python3 scripts/run_crypto_matrix.py \
+  --result-dir ./results/crypto_matrix_$(date +%Y%m%d_%H%M) \
+  --profiles rtt,loss,rate,mixed \
+  --rtt-ms 0,20,50,100 \
+  --loss-pct 0,0.1,0.5,1,2 \
+  --rate-kbit 4000,2000,1000,512 \
+  --jitter-ms 2 \
+  --iterations 8
+```
+
+### Parameter Notes
+
+- `--rtt-ms`: RTT values (ms). Internally converted to one-way delay for `tc netem`.
+- `--loss-pct`: loss sweep points for loss profile.
+- `--rate-kbit`: bandwidth sweep points for rate profile.
+- `--profiles`: choose from `rtt,loss,rate,mixed` (any subset).
+- `--static-loss-pct`, `--static-rate-kbit`: fixed companion faults used by non-loss/non-rate profiles.
+
+### P50/P95/P99 Outputs
+
+The pipeline now computes and reports latency percentiles:
+
+- `p50`, `p95`, `p99` in `RunLogStatsDF.csv`
+- percentile plots (alongside mean/median/success-rate/iteration-time)
+- one combined percentile figure per VariParam (`*_percentile_summary.png`) showing P50/P95/P99 together
+- grouped percentile tables in `ExperimentReport.md`

@@ -31,6 +31,9 @@ def Get_Ike_State_Stats(df):
     range = np.nan
     mean = np.nan
     median = np.nan
+    p50 = np.nan
+    p95 = np.nan
+    p99 = np.nan
     stdDev = np.nan
     TotalConnections = 0
     ConnectionPercent = 0
@@ -77,6 +80,9 @@ def Get_Ike_State_Stats(df):
             range = max - min
             mean = np.mean(Deltas[keep_array])  # Only use the non-outlier rows
             median = np.median(Deltas)
+            p50 = np.percentile(Deltas, 50)
+            p95 = np.percentile(Deltas, 95)
+            p99 = np.percentile(Deltas, 99)
             stdDev = np.std(Deltas[keep_array])
             Outliers = sum(drop_array)
             TotalConnections = len(Deltas)
@@ -90,7 +96,8 @@ def Get_Ike_State_Stats(df):
 
 
     LogStats = {'Q3': Q3, 'Q1': Q1, 'IQR': iqr, 'max': max, 'min': min, 'range': range,
-                 'mean': mean, 'median': median, 'stdDev': stdDev, 'Outliers': Outliers, 
+                 'mean': mean, 'median': median, 'p50': p50, 'p95': p95, 'p99': p99,
+                 'stdDev': stdDev, 'Outliers': Outliers,
                  'TotalConnections': TotalConnections, 'ConnectionPercent': ConnectionPercent}
 
     return LogStats
