@@ -22,7 +22,35 @@ from typing import Dict, List
 import yaml
 
 
-SUPPORTED_PROFILES = {"rtt", "loss", "rate", "mixed"}
+SUPPORTED_PROFILES = {"rtt", "loss", "rate", "mixed", "composite"}
+
+
+def _parse_composite_cases(raw: str):
+    """Parse composite cases: name:rtt_ms:loss_pct:rate_kbit[:jitter_ms];..."""
+    cases = []
+    if not raw:
+        return cases
+    for chunk in raw.split(";"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        parts = [x.strip() for x in chunk.split(":")]
+        if len(parts) not in {4, 5}:
+            raise ValueError(
+                "Invalid composite case format. Expected name:rtt_ms:loss_pct:rate_kbit[:jitter_ms]"
+            )
+        name, rtt_ms, loss_pct, rate_kbit = parts[:4]
+        jitter_ms = parts[4] if len(parts) == 5 else "0"
+        cases.append(
+            {
+                "name": name,
+                "rtt_ms": float(rtt_ms),
+                "loss_pct": float(loss_pct),
+                "rate_kbit": float(rate_kbit),
+                "jitter_ms": float(jitter_ms),
+            }
+        )
+    return cases
 
 
 def _parse_list(raw: str, cast=float) -> List[float]:
@@ -73,7 +101,7 @@ def _constraint(
     }
 
 
-def _build_profile_constraints(profile: str, delay_values: List[float], args) -> Dict:
+def _build_profile_constraints(profile: str, delay_values: List[float], args, composite_case=None) -> Dict:
     jitter = max(0.0, float(args.jitter_ms))
     loss = max(0.0, float(args.static_loss_pct))
     rate = max(1.0, float(args.static_rate_kbit))
@@ -112,6 +140,21 @@ def _build_profile_constraints(profile: str, delay_values: List[float], args) ->
             add_parts.append(f"rate {rate}kbit")
         return _constraint("delay", delay_values, "ms", " ".join(add_parts))
 
+    if profile == "composite":
+        if composite_case is None:
+            raise ValueError("profile=composite requires composite_case")
+        delay_ms = round(float(composite_case["rtt_ms"]) / 2.0, 4)
+        jitter_case = max(0.0, float(composite_case.get("jitter_ms", 0.0)))
+        loss_case = max(0.0, float(composite_case["loss_pct"]))
+        rate_case = max(1.0, float(composite_case["rate_kbit"]))
+
+        add_parts = []
+        if jitter_case > 0:
+            add_parts.append(f"{jitter_case}ms")
+        add_parts.append(f"loss {loss_case}%")
+        add_parts.append(f"rate {rate_case}kbit")
+        return _constraint("delay", [delay_ms], "ms", " ".join(add_parts))
+
     raise ValueError(f"Unsupported profile: {profile}")
 
 
@@ -147,6 +190,11 @@ def main() -> int:
     parser.add_argument("--traffic-cmd", default="ping -c 2 10.1.0.2", help="Traffic command during each iteration")
     parser.add_argument("--print-level", type=int, default=1, help="Pipeline print level")
     parser.add_argument("--collect-print-level", type=int, default=1, help="Collector print level")
+    parser.add_argument(
+        "--composite-cases",
+        default="ideal:0:0:4000;wan:20:0.1:2000;lossy:50:1:1000;harsh:100:2:512",
+        help="Composite network cases: name:rtt_ms:loss_pct:rate_kbit[:jitter_ms];...",
+    )
     parser.add_argument("--show-configs", action="store_true", help="Print all generated config paths")
     parser.add_argument("--dry-run", action="store_true", help="Generate configs and print command only")
     args = parser.parse_args()
@@ -159,14 +207,16 @@ def main() -> int:
     profile_list = [p.strip().lower() for p in args.profiles.split(",") if p.strip()]
     if not profile_list:
         raise ValueError("At least one profile is required")
-    invalid = [p for p in profile_list if p not in SUPPORTED_PROFILES]
+    supported_profiles = set(SUPPORTED_PROFILES) | {"composite"}
+    invalid = [p for p in profile_list if p not in supported_profiles]
     if invalid:
         raise ValueError(
-            f"Unsupported profile(s): {', '.join(invalid)}. Supported: {', '.join(sorted(SUPPORTED_PROFILES))}"
+            f"Unsupported profile(s): {', '.join(invalid)}. Supported: {', '.join(sorted(supported_profiles))}"
         )
 
     rtt_values = _parse_list(args.rtt_ms, float)
     delay_values = _rtt_to_delay_values(rtt_values)
+    composite_cases = _parse_composite_cases(args.composite_cases)
 
     scenarios = [
         {
@@ -189,23 +239,47 @@ def main() -> int:
     generated = []
     for scenario in scenarios:
         for profile in profile_list:
-            con1 = _build_profile_constraints(profile, delay_values, args)
-            note = f"{scenario['name']}__{profile}"
-            cfg = {
-                "CoreConfig": _core_config(
-                    compose_file=scenario["compose"],
-                    note=note,
-                    iterations=args.iterations,
-                    max_time_s=args.max_time_s,
-                    traffic_cmd=args.traffic_cmd,
-                ),
-                "Carol_TC_Config": {
-                    "Constraint1": con1,
-                },
-            }
-            cfg_path = cfg_dir / f"DataCollect_{scenario['name']}_{profile}.yaml"
-            _write_yaml(cfg_path, cfg)
-            generated.append(cfg_path)
+            if profile != "composite":
+                con1 = _build_profile_constraints(profile, delay_values, args)
+                note = f"{scenario['name']}__{profile}"
+                cfg = {
+                    "CoreConfig": _core_config(
+                        compose_file=scenario["compose"],
+                        note=note,
+                        iterations=args.iterations,
+                        max_time_s=args.max_time_s,
+                        traffic_cmd=args.traffic_cmd,
+                    ),
+                    "Carol_TC_Config": {
+                        "Constraint1": con1,
+                    },
+                }
+                cfg_path = cfg_dir / f"DataCollect_{scenario['name']}_{profile}.yaml"
+                _write_yaml(cfg_path, cfg)
+                generated.append(cfg_path)
+                continue
+
+            if not composite_cases:
+                raise ValueError("No composite cases found. Use --composite-cases to provide at least one case.")
+
+            for case in composite_cases:
+                con1 = _build_profile_constraints("composite", delay_values, args, composite_case=case)
+                note = f"{scenario['name']}__composite__{case['name']}"
+                cfg = {
+                    "CoreConfig": _core_config(
+                        compose_file=scenario["compose"],
+                        note=note,
+                        iterations=args.iterations,
+                        max_time_s=args.max_time_s,
+                        traffic_cmd=args.traffic_cmd,
+                    ),
+                    "Carol_TC_Config": {
+                        "Constraint1": con1,
+                    },
+                }
+                cfg_path = cfg_dir / f"DataCollect_{scenario['name']}_composite_{case['name']}.yaml"
+                _write_yaml(cfg_path, cfg)
+                generated.append(cfg_path)
 
     config_arg = ",".join(str(p) for p in generated)
     orch_cmd = [

@@ -267,6 +267,24 @@ python3 scripts/run_crypto_matrix.py --profiles rtt --rtt-ms 0,50 --iterations 2
 - `--profiles`: choose from `rtt,loss,rate,mixed` (any subset).
 - `--static-loss-pct`, `--static-rate-kbit`: fixed companion faults used by non-loss/non-rate profiles.
 
+### Composite Network Cases (Delay + Loss + Rate Together)
+
+Run multiple composite network conditions in one batch:
+
+```bash
+python3 scripts/run_crypto_matrix.py \
+  --result-dir ./results/composite_$(date +%Y%m%d_%H%M) \
+  --profiles composite \
+  --composite-cases "ideal:0:0:4000;wan:20:0.1:2000;lossy:50:1:1000;harsh:100:2:512" \
+  --iterations 8
+```
+
+`--composite-cases` format:
+
+- `name:rtt_ms:loss_pct:rate_kbit[:jitter_ms]`
+- Example with jitter:
+  `office:30:0.2:1500:2;mobile:80:1.5:700:5`
+
 ### P50/P95/P99 Outputs
 
 The pipeline now computes and reports latency percentiles:
