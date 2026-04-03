@@ -15,7 +15,7 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     report_path = out_dir / "ExperimentReport.md"
-    image_files = sorted([p.name for p in out_dir.glob("*.png")])
+    image_files = sorted([p.name for p in out_dir.iterdir() if p.suffix.lower() in {".png", ".svg"}])
 
     lines = []
     lines.append("# Experiment Report")
