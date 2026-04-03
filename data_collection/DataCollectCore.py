@@ -1,18 +1,47 @@
 """Core data collection flow for PQCCN strongSwan experiments.
 
-This module keeps the original RunConfig(ymlConfig, log_dir, plvl) API, while
-adding safer config handling, retry logic, and richer constraint sweep options.
+The collector now uses unified comprehensive network profiles:
+- No legacy Constraint1/Constraint2 sections are supported.
+- Empty profile values mean no restriction for that dimension.
+- Log naming and run metadata are tied to full network profile signatures.
 """
 
+from __future__ import annotations
+
+import hashlib
+import math
 import os
+import re
 import shlex
 import time
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import yaml
 from python_on_whales import DockerClient
 from tqdm import trange
+
+NETWORK_PROFILE_KEYS = (
+    "delay_ms",
+    "jitter_ms",
+    "loss_pct",
+    "duplicate_pct",
+    "corrupt_pct",
+    "reorder_pct",
+    "reorder_corr_pct",
+    "rate_kbit",
+)
+
+SWEEPABLE_PROFILE_KEYS = (
+    "delay_ms",
+    "jitter_ms",
+    "loss_pct",
+    "duplicate_pct",
+    "corrupt_pct",
+    "reorder_pct",
+    "reorder_corr_pct",
+    "rate_kbit",
+)
 
 
 def _as_bool(value, default=False):
@@ -60,10 +89,12 @@ def _build_sweep_values(cfg: Dict) -> np.ndarray:
 def _print_nested(title: str, data: Dict):
     print(f"\n\n{title}")
     for k, v in data.items():
-        print(f"\t{k}")
         if isinstance(v, dict):
+            print(f"\t{k}")
             for sk, sv in v.items():
                 print(f"\t\t{sk}: {sv}")
+        else:
+            print(f"\t{k}: {v}")
 
 
 def _exec_with_retry(docker: DockerClient, host: str, command: str, retries=1, plvl=0, detach=False):
@@ -85,9 +116,9 @@ def _exec_with_retry(docker: DockerClient, host: str, command: str, retries=1, p
     return False
 
 
-def _cleanup_qdisc(docker: DockerClient, host: str, plvl: int):
+def _cleanup_qdisc(docker: DockerClient, host: str, plvl: int, interface: str = "eth0"):
     try:
-        docker.execute(host, shlex.split("tc qdisc del dev eth0 root"), detach=False)
+        docker.execute(host, shlex.split(f"tc qdisc del dev {interface} root"), detach=False)
     except Exception as exc:  # noqa: BLE001
         msg = str(exc)
         if "Cannot delete qdisc with handle of zero" in msg:
@@ -143,30 +174,25 @@ def _run_iteration_batch(
     return time.perf_counter() - batch_start
 
 
-def _constraint_to_cmd(prefix: str, item: Dict, value=None, add_params="") -> str:
-    ctype = item["Type"]
-    c = item["Constraint"]
-    iface = item["Interface"]
-    units = item.get("Units", "")
-    if value is None:
-        value = item.get("StartRange", 1)
-    return f"tc qdisc {prefix} dev {iface} root {ctype} {c} {value}{units} {add_params}".strip()
-
-
 def _load_config(yml_config: str) -> Tuple[Dict, Dict, Dict]:
     with open(yml_config, encoding="utf-8") as f:
         conf = yaml.safe_load(f) or {}
 
+    if "Carol_TC_Config" in conf or "Moon_TC_Config" in conf:
+        raise ValueError(
+            "Legacy constraint sections are no longer supported. Use Carol_Network_Config and Moon_Network_Config."
+        )
+
     core = conf.get("CoreConfig") or {}
-    carol = conf.get("Carol_TC_Config") or {}
-    moon = conf.get("Moon_TC_Config") or {}
+    carol = conf.get("Carol_Network_Config") or {}
+    moon = conf.get("Moon_Network_Config") or {}
 
     if not isinstance(core, dict):
         raise ValueError("CoreConfig must be a mapping")
     if not isinstance(carol, dict):
-        raise ValueError("Carol_TC_Config must be a mapping")
+        raise ValueError("Carol_Network_Config must be a mapping")
     if not isinstance(moon, dict):
-        raise ValueError("Moon_TC_Config must be a mapping")
+        raise ValueError("Moon_Network_Config must be a mapping")
 
     return core, carol, moon
 
@@ -185,34 +211,169 @@ def _resolve_iteration_count(core: Dict) -> int:
     return max(1, int(core.get("TC_Iterations", 1)))
 
 
-def _combine_additional_constraints(base_item: Dict, extras: Iterable[Dict]) -> str:
-    add_params = str(base_item.get("AddParams", "") or "").strip()
-    base_type = base_item.get("Type")
-    for item in extras:
-        if item.get("Type") != base_type:
-            continue
-        chunk = f"{item['Constraint']} {item.get('StartRange', 1)}{item.get('Units', '')} {item.get('AddParams', '')}".strip()
-        add_params = f"{add_params} {chunk}".strip()
-    return add_params
+def _empty_profile() -> Dict[str, float | None]:
+    return {k: None for k in NETWORK_PROFILE_KEYS}
 
 
-def _apply_static_constraints(docker, host: str, base_item: Dict, static_items: Iterable[Dict], retries: int, plvl: int):
-    for item in static_items:
-        if item.get("Type") == base_item.get("Type"):
-            continue
-        cmd = _constraint_to_cmd("add", item, value=item.get("StartRange", 1), add_params=str(item.get("AddParams", "") or ""))
-        _exec_with_retry(docker, host, cmd, retries=retries, plvl=plvl)
+def _optional_number(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"", "none", "null", "na", "n/a", "off", "unlimited"}:
+            return None
+    try:
+        result = float(value)
+    except Exception:  # noqa: BLE001
+        return None
+    if not math.isfinite(result) or result <= 0:
+        return None
+    return result
+
+
+def _fmt_num(value: float | None) -> str:
+    if value is None:
+        return "none"
+    rendered = f"{value:.6f}".rstrip("0").rstrip(".")
+    return rendered or "0"
+
+
+def _slugify(text: str, max_len: int = 140) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", text.strip()).strip("_").lower()
+    slug = re.sub(r"_+", "_", slug)
+    if not slug:
+        return "network_profile"
+    if len(slug) <= max_len:
+        return slug
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
+    head = slug[: max_len - 11].rstrip("_")
+    return f"{head}_{digest}"
+
+
+def _normalize_network_config(section: Dict, section_name: str, default_adjust_host: str) -> Dict:
+    profile_src = section.get("Profile") or {}
+    if profile_src and not isinstance(profile_src, dict):
+        raise ValueError(f"{section_name}.Profile must be a mapping")
+
+    profile = _empty_profile()
+    for key in NETWORK_PROFILE_KEYS:
+        profile[key] = _optional_number(profile_src.get(key))
+
+    interface = str(section.get("Interface", "eth0")).strip() or "eth0"
+    adjust_host = str(section.get("AdjustHost", default_adjust_host)).strip().lower() or default_adjust_host
+    if adjust_host not in {"carol", "moon", "both"}:
+        raise ValueError(f"{section_name}.AdjustHost must be one of: carol, moon, both")
+
+    add_params = section.get("AddParams", profile_src.get("add_params", ""))
+    add_params = str(add_params or "").strip()
+
+    sweep_key = str(section.get("SweepKey", "")).strip()
+    if sweep_key and sweep_key not in SWEEPABLE_PROFILE_KEYS:
+        raise ValueError(f"{section_name}.SweepKey must be one of: {', '.join(SWEEPABLE_PROFILE_KEYS)}")
+
+    has_sweep_spec = any(section.get(k) is not None for k in ("SweepValues", "StartRange", "EndRange", "Steps"))
+    if sweep_key:
+        if has_sweep_spec:
+            sweep_values = _build_sweep_values(section).astype(float).tolist()
+        elif profile.get(sweep_key) is not None:
+            sweep_values = [float(profile[sweep_key])]
+        else:
+            raise ValueError(
+                f"{section_name}.SweepKey={sweep_key} requires SweepValues/StartRange/EndRange or a non-empty Profile value"
+            )
+    else:
+        sweep_values = [None]
+
+    return {
+        "interface": interface,
+        "adjust_host": adjust_host,
+        "profile": profile,
+        "add_params": add_params,
+        "sweep_key": sweep_key,
+        "sweep_values": sweep_values,
+    }
+
+
+def _build_netem_command(prefix: str, interface: str, profile: Dict[str, float | None], add_params: str) -> str:
+    chunks = []
+
+    delay = profile.get("delay_ms")
+    jitter = profile.get("jitter_ms")
+    if delay is not None:
+        delay_chunk = f"delay {_fmt_num(delay)}ms"
+        if jitter is not None:
+            delay_chunk += f" {_fmt_num(jitter)}ms"
+        chunks.append(delay_chunk)
+
+    loss = profile.get("loss_pct")
+    if loss is not None:
+        chunks.append(f"loss {_fmt_num(loss)}%")
+
+    duplicate = profile.get("duplicate_pct")
+    if duplicate is not None:
+        chunks.append(f"duplicate {_fmt_num(duplicate)}%")
+
+    corrupt = profile.get("corrupt_pct")
+    if corrupt is not None:
+        chunks.append(f"corrupt {_fmt_num(corrupt)}%")
+
+    reorder = profile.get("reorder_pct")
+    reorder_corr = profile.get("reorder_corr_pct")
+    if reorder is not None:
+        reorder_chunk = f"reorder {_fmt_num(reorder)}%"
+        if reorder_corr is not None:
+            reorder_chunk += f" {_fmt_num(reorder_corr)}%"
+        chunks.append(reorder_chunk)
+
+    rate = profile.get("rate_kbit")
+    if rate is not None:
+        chunks.append(f"rate {_fmt_num(rate)}kbit")
+
+    if add_params:
+        chunks.append(add_params)
+
+    if not chunks:
+        return ""
+
+    return f"tc qdisc {prefix} dev {interface} root netem {' '.join(chunks)}"
+
+
+def _apply_profile_for_hosts(
+    docker: DockerClient,
+    hosts: List[str],
+    interface: str,
+    profile: Dict[str, float | None],
+    add_params: str,
+    retries: int,
+    plvl: int,
+) -> str:
+    cmd = _build_netem_command("add", interface, profile, add_params)
+    for host in hosts:
+        _cleanup_qdisc(docker, host, plvl, interface=interface)
+        if cmd:
+            _exec_with_retry(docker, host, cmd, retries=retries, plvl=plvl)
+    return cmd or "none"
+
+
+def _profile_text(profile: Dict[str, float | None], add_params: str) -> str:
+    pieces = [f"{k}={_fmt_num(profile.get(k))}" for k in NETWORK_PROFILE_KEYS]
+    pieces.append(f"add_params={add_params if add_params else 'none'}")
+    return "|".join(pieces)
+
+
+def _network_signature(carol_profile, carol_add_params: str, moon_profile, moon_add_params: str) -> str:
+    return f"carol[{_profile_text(carol_profile, carol_add_params)}]|moon[{_profile_text(moon_profile, moon_add_params)}]"
 
 
 def RunConfig(ymlConfig, log_dir, plvl):
-    core, carol_cfg, moon_cfg = _load_config(ymlConfig)
+    core, carol_raw_cfg, moon_raw_cfg = _load_config(ymlConfig)
 
     pLvl = int(core.get("PrintLevel", 0) if plvl == "" else plvl)
     log_local_path = _ensure_local_path(log_dir if log_dir != "" else core.get("LocalPath", "./"))
     max_run_time = float(core.get("MaxTimeS", 3600))
     remote_path = str(core.get("RemotePath", "/var/log/charon.log"))
     compose_files = _normalize_compose_files(core.get("compose_files"))
-    note = str(core.get("Note", ""))
+    note = str(core.get("Note", "")).strip()
     mirror_moon = _as_bool(core.get("MirrorMoon", False))
     fresh_run = _as_bool(core.get("FreshRun", False))
     retries = max(1, int(core.get("CommandRetries", 1)))
@@ -220,14 +381,18 @@ def RunConfig(ymlConfig, log_dir, plvl):
     ipsec_n = _resolve_iteration_count(core)
     warmup_n, warmup_scope = _resolve_warmup_config(core)
 
+    carol_cfg = _normalize_network_config(carol_raw_cfg, "Carol_Network_Config", default_adjust_host="carol")
+    moon_cfg = _normalize_network_config(moon_raw_cfg, "Moon_Network_Config", default_adjust_host="moon")
+
+    if moon_cfg.get("sweep_key"):
+        raise ValueError("Moon_Network_Config sweep is not supported in this release; keep Moon profile static")
+
     if pLvl > 0:
         print("\n\nCORE CONFIG")
         for k, v in core.items():
             print(f"\t{k}: {v}")
-        if carol_cfg:
-            _print_nested("CAROL CONFIG", carol_cfg)
-        if moon_cfg:
-            _print_nested("MOON CONFIG", moon_cfg)
+        _print_nested("CAROL NETWORK CONFIG", carol_cfg)
+        _print_nested("MOON NETWORK CONFIG", moon_cfg)
 
     print("\n\n -----------------------------------------------")
     print(f"Max Run Time: {max_run_time / 60} minutes")
@@ -236,14 +401,14 @@ def RunConfig(ymlConfig, log_dir, plvl):
     docker = DockerClient(compose_files=compose_files)
     docker.compose.ps()
 
-    base_carol = carol_cfg.get("Constraint1") if carol_cfg else None
-    base_moon = moon_cfg.get("Constraint1") if moon_cfg else None
+    startrun_tic = time.perf_counter()
     warmup_elapsed_total = 0.0
 
     try:
         if not fresh_run:
             try:
                 import subprocess
+
                 subprocess.run(["docker", "rm", "-f", "moon", "carol"], capture_output=True)
                 docker.compose.down(remove_orphans=True)
             except Exception:
@@ -268,25 +433,6 @@ def RunConfig(ymlConfig, log_dir, plvl):
         _exec_with_retry(docker, "carol", "./charon", retries=retries, plvl=pLvl, detach=True)
         _exec_with_retry(docker, "carol", "swanctl --list-conns", retries=retries, plvl=pLvl)
 
-        if base_carol:
-            adjust_host = base_carol.get("AdjustHost", "carol")
-            target_hosts = _target_hosts(adjust_host, mirror_moon)
-            extra_items = [v for k, v in carol_cfg.items() if k != "Constraint1"]
-            c_add_params = _combine_additional_constraints(base_carol, extra_items)
-
-            starter = _constraint_to_cmd("add", base_carol, value=base_carol.get("StartRange", 1), add_params=c_add_params)
-            for host in target_hosts:
-                _exec_with_retry(docker, host, starter, retries=retries, plvl=pLvl)
-            for host in target_hosts:
-                _apply_static_constraints(docker, host, base_carol, extra_items, retries, pLvl)
-
-        if base_moon:
-            extra_items = [v for k, v in moon_cfg.items() if k != "Constraint1"]
-            m_add_params = _combine_additional_constraints(base_moon, extra_items)
-            starter = _constraint_to_cmd("add", base_moon, value=base_moon.get("StartRange", 1), add_params=m_add_params)
-            _exec_with_retry(docker, "moon", starter, retries=retries, plvl=pLvl)
-            _apply_static_constraints(docker, "moon", base_moon, extra_items, retries, pLvl)
-
         if warmup_n > 0 and warmup_scope == "per_config":
             if pLvl > 0:
                 print(" -- Warm-up Run (per_config) -- ")
@@ -295,32 +441,51 @@ def RunConfig(ymlConfig, log_dir, plvl):
             _exec_with_retry(docker, "carol", "swanctl --reload-settings", retries=retries, plvl=pLvl)
             time.sleep(1)
 
-        startrun_tic = time.perf_counter()
         time.sleep(1)
         if pLvl > 0:
             print(" -- Starting Data Collection Run -- ")
 
-        c_vals = _build_sweep_values(base_carol) if base_carol else np.array([1.0])
+        c_vals = carol_cfg["sweep_values"]
+        sweep_key = carol_cfg.get("sweep_key", "")
         if pLvl > 0:
-            cname = base_carol.get("Constraint", "baseline") if base_carol else "baseline"
-            print(" -- Begin Constraint 1 Loop -- ")
+            print(" -- Begin Network Profile Loop -- ")
             print(f"Total Planned Iterations: {len(c_vals)}")
-            print(f"Planned Values for Carol Constraint {cname}: {c_vals.tolist()}\n\n")
+            if sweep_key:
+                print(f"Sweep Key: {sweep_key}")
+                print(f"Planned Values: {c_vals}\n\n")
+            else:
+                print("No sweep configured; running single profile point\n\n")
 
         for i in trange(len(c_vals)):
             l1_tic = time.perf_counter()
-            c_add_params = ""
-            tc_cmd = ""
             warmup_elapsed_this_point = 0.0
 
-            if base_carol:
-                c_add_params = _combine_additional_constraints(base_carol, [v for k, v in carol_cfg.items() if k != "Constraint1"])
-                tc_cmd = _constraint_to_cmd("change", base_carol, value=c_vals[i], add_params=c_add_params)
-                adjust_host = base_carol.get("AdjustHost", "carol")
-                for host in _target_hosts(adjust_host, mirror_moon):
-                    _exec_with_retry(docker, host, tc_cmd, retries=retries, plvl=pLvl)
-                if pLvl > 2:
-                    print(f"Updated constraints with: {tc_cmd}")
+            current_carol_profile = dict(carol_cfg["profile"])
+            if sweep_key:
+                current_carol_profile[sweep_key] = _optional_number(c_vals[i])
+
+            current_moon_profile = dict(moon_cfg["profile"])
+
+            carol_targets = _target_hosts(carol_cfg["adjust_host"], mirror_moon)
+            carol_cmd = _apply_profile_for_hosts(
+                docker,
+                carol_targets,
+                carol_cfg["interface"],
+                current_carol_profile,
+                carol_cfg["add_params"],
+                retries,
+                pLvl,
+            )
+            moon_cmd = _apply_profile_for_hosts(
+                docker,
+                ["moon"],
+                moon_cfg["interface"],
+                current_moon_profile,
+                moon_cfg["add_params"],
+                retries,
+                pLvl,
+            )
+            tc_cmd = f"carol[{','.join(carol_targets)}]: {carol_cmd} | moon[moon]: {moon_cmd}"
 
             if warmup_n > 0 and warmup_scope == "per_point":
                 if pLvl > 0:
@@ -343,12 +508,20 @@ def RunConfig(ymlConfig, log_dir, plvl):
             )
 
             date_time = time.strftime("%Y%m%d_%H%M")
-            if base_carol:
-                c_units = str(base_carol.get("Units", ""))
-                c_name = str(base_carol.get("Constraint", "constraint"))
-                log_name = f"{log_local_path}charon-{date_time}-{c_name}_{c_vals[i]}{c_units}-iter_{ipsec_n}_{note}.log"
-            else:
-                log_name = f"{log_local_path}charon-{date_time}-baseline-iter_{ipsec_n}.log"
+            profile_signature = _network_signature(
+                current_carol_profile,
+                carol_cfg["add_params"],
+                current_moon_profile,
+                moon_cfg["add_params"],
+            )
+            profile_slug = _slugify(profile_signature)
+            note_slug = _slugify(note) if note else ""
+
+            name_parts = [profile_slug, f"iter_{ipsec_n}"]
+            if note_slug:
+                name_parts.append(note_slug)
+            run_name = "__".join(name_parts)
+            log_name = f"{log_local_path}charon-{date_time}-{run_name}.log"
 
             try:
                 docker.copy(("carol", remote_path), log_name)
@@ -371,8 +544,14 @@ def RunConfig(ymlConfig, log_dir, plvl):
                     log_name
                     + "; ScenarioNote: "
                     + note
-                    + "; Additional Params: "
-                    + c_add_params
+                    + "; SweepKey: "
+                    + (sweep_key if sweep_key else "none")
+                    + "; NetworkProfile: "
+                    + profile_signature
+                    + "; CarolProfile: "
+                    + _profile_text(current_carol_profile, carol_cfg["add_params"])
+                    + "; MoonProfile: "
+                    + _profile_text(current_moon_profile, moon_cfg["add_params"])
                     + "; tc_command: "
                     + tc_cmd
                     + "; IterationTime: "
@@ -389,8 +568,8 @@ def RunConfig(ymlConfig, log_dir, plvl):
     finally:
         if pLvl > 0:
             print(" -- Wrapping Up Run -- ")
-        _cleanup_qdisc(docker, "carol", pLvl)
-        _cleanup_qdisc(docker, "moon", pLvl)
+        _cleanup_qdisc(docker, "carol", pLvl, interface=carol_cfg["interface"])
+        _cleanup_qdisc(docker, "moon", pLvl, interface=moon_cfg["interface"])
         try:
             docker.compose.down(remove_orphans=True)
         except Exception:

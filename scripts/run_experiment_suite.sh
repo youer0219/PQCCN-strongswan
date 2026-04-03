@@ -3,7 +3,19 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${1:-$ROOT_DIR/results/$(date +%Y%m%d_%H%M%S)}"
-CFG_INPUT="${2:-$ROOT_DIR/data_collection/configs/*.yaml}"
+
+DEFAULT_CONFIGS=(
+	"$ROOT_DIR/data_collection/configs/DataCollect_composite_ideal.yaml"
+	"$ROOT_DIR/data_collection/configs/DataCollect_composite_metro.yaml"
+	"$ROOT_DIR/data_collection/configs/DataCollect_composite_wan.yaml"
+	"$ROOT_DIR/data_collection/configs/DataCollect_composite_harsh.yaml"
+)
+
+if [[ -n "${2:-}" ]]; then
+	CFG_INPUT="$2"
+else
+	CFG_INPUT="$(IFS=','; echo "${DEFAULT_CONFIGS[*]}")"
+fi
 
 mkdir -p "$OUT_DIR"
 

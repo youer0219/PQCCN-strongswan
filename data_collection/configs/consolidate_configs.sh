@@ -24,16 +24,14 @@ echo "Dry Run: $DRY_RUN"
 echo "Archive: $ARCHIVE"
 echo ""
 
-# Configs to KEEP (core + quick suite)
+# Configs to KEEP (retained composite + quick set)
 KEEP_CONFIGS=(
-  "DataCollect_baseline_quick.yaml"
-  "DataCollect_delay_quick.yaml"
-  "DataCollect_fault_quick.yaml"
-  "DataCollect_baseline.yaml"
-  "DataCollect_delay.yaml"
-  "DataCollect_pktLoss.yaml"
-  "DataCollect_rate_PQ.yaml"
-  "DataCollect_fault_injection_matrix.yaml"
+  "DataCollect_composite_ideal.yaml"
+  "DataCollect_composite_metro.yaml"
+  "DataCollect_composite_wan.yaml"
+  "DataCollect_composite_harsh.yaml"
+  "DataCollect_quick_classic_ideal.yaml"
+  "DataCollect_quick_hybrid_ideal.yaml"
 )
 
 # Configs to REMOVE (duplicates, outdated, or specific-algorithm variants)

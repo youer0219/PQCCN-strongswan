@@ -22,7 +22,7 @@ from typing import Dict, List
 import yaml
 
 
-SUPPORTED_PROFILES = {"rtt", "loss", "rate", "mixed", "composite"}
+SUPPORTED_PROFILES = {"composite"}
 
 
 def _parse_composite_cases(raw: str):
@@ -93,62 +93,81 @@ def _core_config(
     }
 
 
-def _constraint(
-    name: str,
-    values: List[float],
-    units: str,
-    add_params: str,
-    tc_type: str = "netem",
-    iface: str = "eth0",
-) -> Dict:
+def _empty_network_profile() -> Dict[str, str]:
     return {
-        "Type": tc_type,
-        "Constraint": name,
-        "Interface": iface,
-        "SweepValues": values,
-        "Units": units,
-        "AddParams": add_params.strip(),
+        "delay_ms": "",
+        "jitter_ms": "",
+        "loss_pct": "",
+        "duplicate_pct": "",
+        "corrupt_pct": "",
+        "reorder_pct": "",
+        "reorder_corr_pct": "",
+        "rate_kbit": "",
     }
 
 
-def _build_profile_constraints(profile: str, delay_values: List[float], args, composite_case=None) -> Dict:
+def _set_profile_value(profile_map: Dict[str, str], key: str, value: float):
+    if value is None:
+        profile_map[key] = ""
+        return
+    if float(value) <= 0:
+        profile_map[key] = ""
+        return
+    rendered = f"{float(value):.6f}".rstrip("0").rstrip(".")
+    profile_map[key] = rendered
+
+
+def _build_network_config(profile: str, delay_values: List[float], args, composite_case=None) -> Dict:
     jitter = max(0.0, float(args.jitter_ms))
     loss = max(0.0, float(args.static_loss_pct))
     rate = max(0.0, float(args.static_rate_kbit))
+    profile_map = _empty_network_profile()
+
+    base_delay = delay_values[0] if delay_values else 0.0
+    if base_delay > 0:
+        _set_profile_value(profile_map, "delay_ms", base_delay)
+    if jitter > 0:
+        _set_profile_value(profile_map, "jitter_ms", jitter)
+    if loss > 0:
+        _set_profile_value(profile_map, "loss_pct", loss)
+    if rate > 0:
+        _set_profile_value(profile_map, "rate_kbit", rate)
 
     if profile == "rtt":
-        add = f"{jitter}ms" if jitter > 0 else ""
-        return _constraint("delay", delay_values, "ms", add)
+        return {
+            "Interface": "eth0",
+            "AdjustHost": "carol",
+            "SweepKey": "delay_ms",
+            "SweepValues": delay_values,
+            "Profile": profile_map,
+        }
 
     if profile == "loss":
-        add_parts = []
-        if delay_values and delay_values[0] > 0:
-            add_parts.append(f"delay {delay_values[0]}ms")
-            if jitter > 0:
-                add_parts.append(f"{jitter}ms")
-        if rate > 0:
-            add_parts.append(f"rate {rate}kbit")
-        return _constraint("loss", _parse_list(args.loss_pct, float), "%", " ".join(add_parts))
+        return {
+            "Interface": "eth0",
+            "AdjustHost": "carol",
+            "SweepKey": "loss_pct",
+            "SweepValues": _parse_list(args.loss_pct, float),
+            "Profile": profile_map,
+        }
 
     if profile == "rate":
-        add_parts = []
-        if delay_values and delay_values[0] > 0:
-            add_parts.append(f"delay {delay_values[0]}ms")
-            if jitter > 0:
-                add_parts.append(f"{jitter}ms")
-        if loss > 0:
-            add_parts.append(f"loss {loss}%")
-        return _constraint("rate", _parse_list(args.rate_kbit, float), "kbit", " ".join(add_parts))
+        return {
+            "Interface": "eth0",
+            "AdjustHost": "carol",
+            "SweepKey": "rate_kbit",
+            "SweepValues": _parse_list(args.rate_kbit, float),
+            "Profile": profile_map,
+        }
 
     if profile == "mixed":
-        add_parts = []
-        if jitter > 0:
-            add_parts.append(f"{jitter}ms")
-        if loss > 0:
-            add_parts.append(f"loss {loss}%")
-        if rate > 0:
-            add_parts.append(f"rate {rate}kbit")
-        return _constraint("delay", delay_values, "ms", " ".join(add_parts))
+        return {
+            "Interface": "eth0",
+            "AdjustHost": "carol",
+            "SweepKey": "delay_ms",
+            "SweepValues": delay_values,
+            "Profile": profile_map,
+        }
 
     if profile == "composite":
         if composite_case is None:
@@ -158,14 +177,16 @@ def _build_profile_constraints(profile: str, delay_values: List[float], args, co
         loss_case = max(0.0, float(composite_case["loss_pct"]))
         rate_case = max(0.0, float(composite_case["rate_kbit"]))
 
-        add_parts = []
-        if jitter_case > 0:
-            add_parts.append(f"{jitter_case}ms")
-        if loss_case > 0:
-            add_parts.append(f"loss {loss_case}%")
-        if rate_case > 0:
-            add_parts.append(f"rate {rate_case}kbit")
-        return _constraint("delay", [delay_ms], "ms", " ".join(add_parts))
+        composite_profile = _empty_network_profile()
+        _set_profile_value(composite_profile, "delay_ms", delay_ms)
+        _set_profile_value(composite_profile, "jitter_ms", jitter_case)
+        _set_profile_value(composite_profile, "loss_pct", loss_case)
+        _set_profile_value(composite_profile, "rate_kbit", rate_case)
+        return {
+            "Interface": "eth0",
+            "AdjustHost": "carol",
+            "Profile": composite_profile,
+        }
 
     raise ValueError(f"Unsupported profile: {profile}")
 
@@ -184,12 +205,12 @@ def _preview_paths(paths: List[Path], max_items: int = 3) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run 3 crypto scenarios with configurable network sweeps")
+    parser = argparse.ArgumentParser(description="Run 3 crypto scenarios with 4 composite RTT/loss network profiles")
     parser.add_argument("--result-dir", default="./results/crypto_matrix", help="Output directory for logs and plots")
     parser.add_argument(
         "--profiles",
-        default="rtt,loss,rate,mixed",
-        help="Comma-separated network profiles to run: rtt,loss,rate,mixed",
+        default="composite",
+        help="Network profile mode. Only 'composite' is supported.",
     )
     parser.add_argument("--rtt-ms", default="0,20,50,100", help="RTT sweep values in ms for rtt/mixed profiles")
     parser.add_argument("--loss-pct", default="0,0.1,0.5,1,2", help="Loss sweep values in %% for loss profile")
@@ -211,7 +232,7 @@ def main() -> int:
     parser.add_argument("--collect-print-level", type=int, default=1, help="Collector print level")
     parser.add_argument(
         "--composite-cases",
-        default="ideal:0:0:4000;wan:20:0.1:2000;lossy:50:1:1000;harsh:100:2:512",
+        default="ideal:0:0:4000;metro:20:0.1:3200;wan:60:0.5:2200;harsh:120:2.0:1200",
         help="Composite network cases: name:rtt_ms:loss_pct:rate_kbit[:jitter_ms];...",
     )
     parser.add_argument("--show-configs", action="store_true", help="Print all generated config paths")
@@ -226,7 +247,7 @@ def main() -> int:
     profile_list = [p.strip().lower() for p in args.profiles.split(",") if p.strip()]
     if not profile_list:
         raise ValueError("At least one profile is required")
-    supported_profiles = set(SUPPORTED_PROFILES) | {"composite"}
+    supported_profiles = set(SUPPORTED_PROFILES)
     invalid = [p for p in profile_list if p not in supported_profiles]
     if invalid:
         raise ValueError(
@@ -259,7 +280,7 @@ def main() -> int:
     for scenario in scenarios:
         for profile in profile_list:
             if profile != "composite":
-                con1 = _build_profile_constraints(profile, delay_values, args)
+                net_cfg = _build_network_config(profile, delay_values, args)
                 note = f"{scenario['name']}__{profile}"
                 cfg = {
                     "CoreConfig": _core_config(
@@ -271,9 +292,7 @@ def main() -> int:
                         warmup_iterations=args.warmup_iters,
                         warmup_scope=args.warmup_scope,
                     ),
-                    "Carol_TC_Config": {
-                        "Constraint1": con1,
-                    },
+                    "Carol_Network_Config": net_cfg,
                 }
                 cfg_path = cfg_dir / f"DataCollect_{scenario['name']}_{profile}.yaml"
                 _write_yaml(cfg_path, cfg)
@@ -284,7 +303,7 @@ def main() -> int:
                 raise ValueError("No composite cases found. Use --composite-cases to provide at least one case.")
 
             for case in composite_cases:
-                con1 = _build_profile_constraints("composite", delay_values, args, composite_case=case)
+                net_cfg = _build_network_config("composite", delay_values, args, composite_case=case)
                 note = f"{scenario['name']}__composite__{case['name']}"
                 cfg = {
                     "CoreConfig": _core_config(
@@ -296,9 +315,7 @@ def main() -> int:
                         warmup_iterations=args.warmup_iters,
                         warmup_scope=args.warmup_scope,
                     ),
-                    "Carol_TC_Config": {
-                        "Constraint1": con1,
-                    },
+                    "Carol_Network_Config": net_cfg,
                 }
                 cfg_path = cfg_dir / f"DataCollect_{scenario['name']}_composite_{case['name']}.yaml"
                 _write_yaml(cfg_path, cfg)

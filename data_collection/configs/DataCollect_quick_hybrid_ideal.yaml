@@ -1,0 +1,25 @@
+---
+CoreConfig:
+  TC_Iterations: 2
+  MaxTimeS: 1200
+  LocalPath: "../../"
+  RemotePath: "/var/log/charon.log"
+  CommandRetries: 2
+  TrafficCommand: "ping -c 2 10.1.0.2"
+  PrintLevel: 1
+  compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"
+  Note: "hybrid2pq_pqcert__quick__ideal"
+
+Carol_Network_Config:
+  Interface: eth0
+  AdjustHost: carol
+  Profile:
+    delay_ms: ""
+    jitter_ms: ""
+    loss_pct: ""
+    duplicate_pct: ""
+    corrupt_pct: ""
+    reorder_pct: ""
+    reorder_corr_pct: ""
+    rate_kbit: ""
+  AddParams: ""

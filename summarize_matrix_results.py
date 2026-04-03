@@ -119,15 +119,30 @@ def _first_non_empty(group: pd.DataFrame, column: str) -> str:
 
 
 def _build_detail_label(group: pd.DataFrame) -> str:
-    delay = _first_non_empty(group, "delay")
-    loss = _first_non_empty(group, "loss")
+    profile = _first_non_empty(group, "NetworkProfile")
+    if profile:
+        compact = profile.replace("|", " ").replace(",", " ")
+        if len(compact) > 78:
+            compact = compact[:75].rstrip() + "..."
+        return compact
+
     pieces = []
-    if delay:
-        pieces.append(f"delay {delay}")
-    if loss:
-        pieces.append(f"loss {loss}")
+    for col, label in (
+        ("delay_ms", "delay"),
+        ("loss_pct", "loss"),
+        ("duplicate_pct", "duplicate"),
+        ("corrupt_pct", "corrupt"),
+        ("reorder_pct", "reorder"),
+        ("rate_kbit", "rate"),
+        ("delay", "delay"),
+        ("loss", "loss"),
+    ):
+        value = _first_non_empty(group, col)
+        if value:
+            pieces.append(f"{label} {value}")
+
     if not pieces:
-        return "no extra netem"
+        return "no network limits"
     return " | ".join(pieces)
 
 

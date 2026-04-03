@@ -1,295 +1,79 @@
-# PQCCN IPsec Performance Testing Guide
+# PQCCN Performance Test Guide
 
-## Quick Start
+## 1. 快速开始
 
-### Exact Commands
+安装依赖：
 
-**Lightweight test (5-10 minutes for quick validation):**
+```bash
+bash ./scripts/install_python_deps.sh
+```
+
+快速验证：
+
 ```bash
 bash ./scripts/run_performance_test.sh quick
 ```
 
-**Full test (3-4 hours, generates comprehensive report):**
-```bash
-bash ./scripts/run_performance_test.sh full
-```
-
-**Manual specification of output directory and configurations:**
-```bash
-# Test delay impact only
-python3 Orchestration.py ./results/delay_only ./data_collection/configs/DataCollect_delay.yaml
-
-# Test packet loss impact only
-python3 Orchestration.py ./results/loss_only ./data_collection/configs/DataCollect_pktLoss.yaml
-
-# Test combined fault scenarios
-python3 Orchestration.py ./results/fault_matrix ./data_collection/configs/DataCollect_fault_injection_matrix.yaml
-```
-
----
-
-## Execution Time Estimation
-
-### Time Calculation Formula
-```
-Single config duration ≈ [(3-5 sec/cycle × TC_Iterations) + 2 sec/log processing] × Steps + container startup/cleanup 30 sec
-```
-
-### Lightweight Test (QUICK) Time Breakdown
-
-| Stage | Content | Duration | Notes |
-|-------|---------|----------|-------|
-| Docker startup/cleanup | Container initialization/cleanup | 1-2 min | Image pull typically fast (cached) |
-| 1. Baseline | 3 IKE establishment cycles | 30 sec | No network faults, pure key exchange performance |
-| 2. Delay | 3 delay values × 3 cycles | 1.5 min | Performance at 1/100/200ms delays |
-| 3. Mixed Faults | 2 values (1% loss + 0.5% dup) × 3 cycles | 1 min | Performance under combined faults |
-| Log processing/plotting | Statistics aggregation, plot generation | 1-2 min | PlotAudit.csv, PNG, ExperimentReport.md output |
-| **Total** | | **5-10 min** | |
-
-### Full Test (FULL) Time Breakdown
-
-| Config | Steps | Iter | Base Time | Actual Time | Notes |
-|--------|-------|------|-----------|-------------|-------|
-| baseline | 1 | 10 | 50 sec | 45-60 sec | Diffie-Helman vs Post-Quantum |
-| delay | 5 | 10 | 8 min | 8-12 min | 1-200ms, incremental sweep |
-| loss | 5 | 10 | 8 min | 8-12 min | 0.1%-25% packet loss rate sweep |
-| rate | 21 | 10 | 35 min | 40-50 min | 128-4 kbps bandwidth limiting |
-| fault_matrix | 8 | 12 | 20 min | 20-30 min | Multiple fault combinations (delay+loss+reorder+corrupt) |
-| Docker/log processing | — | — | — | 10-15 min | Container lifecycle, statistics aggregation, plotting |
-| **Total** | | | **~70 min** | **3-4 hours** | |
-
-> **Note**: Actual duration depends on:
-> - Cryptographic algorithm complexity (Post-Quantum typically 30-50% slower than DH)
-> - Docker image first-time pull (if uncached, add 5-10 min)
-> - Log file size (more complex configs generate larger logs)
-
----
-
-## Test Coverage Scenarios
-
-### Ideal Environment (Baseline)
-- **Purpose**: Establish performance baseline
-- **Conditions**: No network delay, no packet loss, unlimited bandwidth
-- **Metrics**: IKE establishment time (ms), CPU utilization, memory peak
-- **Command**:
-  ```bash
-  python3 Orchestration.py ./results/baseline ./data_collection/configs/DataCollect_baseline.yaml
-  ```
-
-### Single Parameter Sweep Scenarios
-
-#### Delay Impact (1-200ms)
-```bash
-python3 Orchestration.py ./results/delay_sweep ./data_collection/configs/DataCollect_delay.yaml
-```
-- **Key Metrics**: Impact of delay on IKE handshake, connection success rate
-
-#### Packet Loss Impact (0.1%-25%)
-```bash
-python3 Orchestration.py ./results/loss_sweep ./data_collection/configs/DataCollect_pktLoss.yaml
-```
-- **Key Metrics**: Packet loss tolerance, retransmission frequency
-
-#### Bandwidth Constraint Impact (128-4 kbps)
-```bash
-python3 Orchestration.py ./results/rate_sweep ./data_collection/configs/DataCollect_rate_PQ.yaml
-```
-- **Key Metrics**: Tunnel establishment and throughput at extreme low speeds
-
-### Combined Fault Scenario
-```bash
-python3 Orchestration.py ./results/fault_matrix ./data_collection/configs/DataCollect_fault_injection_matrix.yaml
-```
-- **Fault Combinations**: Delay + packet loss + reordering + corruption (realistic network model)
-- **Key Metrics**: Stability, fault recovery capability
-
----
-
-## Result Output Example
-
-After completion, result directory structure is as follows:
-```
-results/
-├── perf_quick_20260401_0240/
-│   ├── ExperimentReport.md              ← One-page experiment summary
-│   ├── PlotAudit.csv                    ← Plot quality checklist
-│   ├── RunLogStatsDF.csv                ← Complete statistics data
-│   ├── RunLogStatsDF_summary.csv        ← Quick reference table
-│   ├── 20260401_0240_baseline_vs_mean.png
-│   ├── 20260401_0240_delay_vs_ConnectionPercent.png
-│   └── ...
-└── perf_full_20260401_0500/
-    └── (More plots and complete data)
-```
-
-### ExperimentReport.md Content Example
-```markdown
-# Experiment Report
-
-Generated: 2026-04-01T02:40:01
-Result Directory: results/perf_quick_20260401_0240
-
-## Dataset Overview
-- Total rows: 150
-- Algorithms: Diffie-Helman, Post-Quantum
-- VariParams: baseline, delay, loss, fault_matrix
-
-## Key Metrics
-| Algorithm | VariParam | mean (ms) | ConnectionPercent | IterationTime (s) |
-| --- | --- | ---: | ---: | ---: |
-| Diffie-Helman | baseline | 0.034 | 99.5% | 3.2 |
-| Post-Quantum | baseline | 0.051 | 98.8% | 4.8 |
-| ... | ... | ... | ... | ... |
-
-## Plot Audit
-| VariParam | Stat | Points | XRange | YRange | Note | Image |
-| --- | --- | ---: | --- | --- | --- | --- |
-| delay | mean | 50 | [1, 200] | [0.03, 0.20] | ok | 20260401_delay_vs_mean.png |
-| loss | ConnectionPercent | 50 | [0.1%, 25%] | [90, 100] | ok | 20260401_loss_vs_connpct.png |
-```
-
----
-
-## Recommended Testing Strategy
-
-### Development/Validation Phase
-```bash
-# 1. Quick check if framework works correctly
-bash ./scripts/run_performance_test.sh quick
-
-# 2. If successful, perform deep sweep on critical scenarios
-python3 Orchestration.py ./results/delay_detailed \
-  ./data_collection/configs/DataCollect_delay.yaml
-
-# 3. View detailed comparison report
-cat results/delay_detailed/ExperimentReport.md
-```
-
-### Final Result Generation
-```bash
-# Full test (run overnight or over weekends)
-nohup bash ./scripts/run_performance_test.sh full > perf_test.log 2>&1 &
-
-# Monitor progress
-tail -f perf_test.log
-```
-
----
-
-## Key Metrics Interpretation
-
-| Metric | Meaning | Target/Expected |
-|--------|---------|-----------------|
-| **IKE Setup Time (mean)** | Average IKE handshake time | PQ should be 20-40% slower than DH |
-| **ConnectionPercent** | Percentage of successful connection establishment | > 95% considered healthy |
-| **IterationTime** | Total time per cycle | Should increase with delay/loss |
-| **Jitter (std)** | Performance variability | Low jitter indicates good stability |
-
----
-
-## Troubleshooting
-
-**Issue**: Docker container fails to start
-```bash
-# Rebuild image
-docker build -t strongx509/pq-strongswan:latest ./pq-strongswan
-
-# Manually test startup
-bash ./scripts/setup_docker_test_env.sh
-```
-
-**Issue**: Test hangs (no progress for >10 minutes)
-```bash
-# Check container status
-docker ps
-
-# View collection logs
-tail -f results/*/runstats.txt
-```
-
-**Issue**: Plot or report generation fails
-```bash
-# Check dependencies
-python3 -c "import plotnine, pandas; print('OK')"
-
-# Re-run data processing
-python3 - <<'EOF'
-from data_parsing import ProcessLogs
-from reporting import generate_experiment_report
-df = ProcessLogs.Log_stats('./results/latest', 2)
-generate_experiment_report('./results/latest', df, None)
-EOF
-```
-
----
-
-## Crypto Matrix: 3 Security Modes + Parameterized Network Profiles
-
-Use the new matrix runner to execute all of the following in one run:
-
-1. Classic-KEX + Classic-Cert
-2. Hybrid(1PQ)-KEX + PQ-Cert
-3. Hybrid-KEX (Classic+PQ) + PQ-Cert
-
-The Hybrid(1PQ) mode uses `pq-strongswan/hybrid1pq-docker-compose.yml`.
-The Hybrid(2PQ)-KEX mode uses `pq-strongswan/hybrid2pq-docker-compose.yml` (x25519 + two post-quantum KEX methods in the same proposal).
-
-### One-command Matrix Run
+统一大规模测试（参数可调）：
 
 ```bash
-python3 scripts/run_crypto_matrix.py \
-  --result-dir ./results/crypto_matrix_$(date +%Y%m%d_%H%M) \
-  --profiles rtt,loss,rate,mixed \
-  --rtt-ms 0,20,50,100 \
-  --loss-pct 0,0.1,0.5,1,2 \
-  --rate-kbit 4000,2000,1000,512 \
-  --jitter-ms 2 \
-  --iterations 8
+bash ./scripts/run_performance_test.sh large
 ```
 
-Single-line equivalent (safer when copy/pasting in some terminals):
+## 2. 仅保留的网络配置集合
+
+当前活动配置仅包含：
+
+### 综合网络画像（4个）
+- data_collection/configs/DataCollect_composite_ideal.yaml
+- data_collection/configs/DataCollect_composite_metro.yaml
+- data_collection/configs/DataCollect_composite_wan.yaml
+- data_collection/configs/DataCollect_composite_harsh.yaml
+
+### 快速验证配置（2个）
+- data_collection/configs/DataCollect_quick_classic_ideal.yaml
+- data_collection/configs/DataCollect_quick_hybrid_ideal.yaml
+
+说明：
+- 综合画像按 RTT + 丢包率建模。
+- RTT 在执行时按 one-way delay 应用于 netem（delay = RTT / 2）。
+
+## 3. 统一脚本参数（large 模式）
 
 ```bash
-python3 scripts/run_crypto_matrix.py --result-dir ./results/crypto_matrix_$(date +%Y%m%d_%H%M) --profiles rtt,loss,rate,mixed --rtt-ms 0,20,50,100 --loss-pct 0,0.1,0.5,1,2 --rate-kbit 4000,2000,1000,512 --jitter-ms 2 --iterations 8
+bash ./scripts/run_performance_test.sh large \
+  --result-dir ./results/perf_large_$(date +%Y%m%d_%H%M) \
+  --composite-cases "ideal:0:0:4000;metro:20:0.1:3200;wan:60:0.5:2200;harsh:120:2.0:1200" \
+  --iterations 8 \
+  --warmup-iters 3 \
+  --max-time-s 7200
 ```
 
-Preview only (generate configs and print execution plan without running):
+`--composite-cases` 格式：
+- name:rtt_ms:loss_pct:rate_kbit[:jitter_ms]
+
+## 4. 图像生成保证
+
+统一脚本在测试完成后会检查并确保以下图像生成：
+- matrix_latency_percentiles.svg
+- matrix_overhead.svg
+
+若缺失，会基于 RunLogStatsDF.csv 自动尝试补生成。
+
+## 5. 结果文件
+
+每次运行目录默认包含：
+- ExperimentReport.md
+- RunLogStatsDF.csv
+- RunLogStatsDF_summary.csv
+- PlotAudit.csv
+- matrix_latency_percentiles.svg
+- matrix_overhead.svg
+- packet_bytes.svg（若数据列存在）
+
+## 6. 校验命令
 
 ```bash
-python3 scripts/run_crypto_matrix.py --profiles rtt --rtt-ms 0,50 --iterations 2 --dry-run --show-configs
+python3 -m py_compile Orchestration.py data_collection/DataCollectCore.py data_parsing/LogConversion.py scripts/run_crypto_matrix.py summarize_matrix_results.py summarize_results.py
+python3 -m unittest discover -s tests -p 'test_*.py'
 ```
-
-### Parameter Notes
-
-- `--rtt-ms`: RTT values (ms). Internally converted to one-way delay for `tc netem`.
-- `--loss-pct`: loss sweep points for loss profile.
-- `--rate-kbit`: bandwidth sweep points for rate profile.
-- `--profiles`: choose from `rtt,loss,rate,mixed` (any subset).
-- `--static-loss-pct`, `--static-rate-kbit`: fixed companion faults used by non-loss/non-rate profiles.
-
-### Composite Network Cases (Delay + Loss + Rate Together)
-
-Run multiple composite network conditions in one batch:
-
-```bash
-python3 scripts/run_crypto_matrix.py \
-  --result-dir ./results/composite_$(date +%Y%m%d_%H%M) \
-  --profiles composite \
-  --composite-cases "ideal:0:0:4000;wan:20:0.1:2000;lossy:50:1:1000;harsh:100:2:512" \
-  --iterations 8
-```
-
-`--composite-cases` format:
-
-- `name:rtt_ms:loss_pct:rate_kbit[:jitter_ms]`
-- Example with jitter:
-  `office:30:0.2:1500:2;mobile:80:1.5:700:5`
-
-### P50/P95/P99 Outputs
-
-The pipeline now computes and reports latency percentiles:
-
-- `p50`, `p95`, `p99` in `RunLogStatsDF.csv`
-- percentile plots (alongside mean/median/success-rate/iteration-time)
-- one combined percentile figure per VariParam (`*_percentile_summary.png`) showing P50/P95/P99 together
-- grouped percentile tables in `ExperimentReport.md`

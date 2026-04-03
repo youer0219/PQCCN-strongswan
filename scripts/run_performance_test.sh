@@ -3,106 +3,255 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-cat <<'EOF'
-====================================================================
-PQCCN IKEv2 Post-Quantum Performance Test Suite
-====================================================================
+DEFAULT_COMPOSITE_CASES="ideal:0:0:4000;metro:20:0.1:3200;wan:60:0.5:2200;harsh:120:2.0:1200"
 
-This suite measures the performance impact of post-quantum key exchange 
-(e.g., Kyber-3, BIKE-3) on IPsec tunnel establishment and throughput 
-under various network conditions.
+QUICK_CONFIGS=(
+  "${ROOT_DIR}/data_collection/configs/DataCollect_quick_classic_ideal.yaml"
+  "${ROOT_DIR}/data_collection/configs/DataCollect_quick_hybrid_ideal.yaml"
+)
 
-Two test modes available:
+join_by_comma() {
+  local IFS=','
+  echo "$*"
+}
 
-  QUICK (5-10 min):  Ideal + Simple Delay + Mixed Faults (fast validation)
-  FULL  (3-4 hours): Comprehensive Ideal/Delay/Loss/Rate/Fault scenarios
+format_hms() {
+  local total="$1"
+  printf '%02d:%02d:%02d\n' $((total/3600)) $((total%3600/60)) $((total%60))
+}
 
-====================================================================
-EOF
+ensure_images() {
+  local result_dir="$1"
+  local latency_svg="${result_dir}/matrix_latency_percentiles.svg"
+  local overhead_svg="${result_dir}/matrix_overhead.svg"
 
-case "${1:-}" in
-  quick)
-    echo ""
-    echo "Starting QUICK test suite (5-10 minutes expected)..."
-    echo ""
-    start=$(date +%s)
-    bash ./scripts/setup_docker_test_env.sh >/dev/null 2>&1 || true
-    sleep 2
-    python3 Orchestration.py "./results/perf_quick_$(date +%Y%m%d_%H%M)" \
-      "./data_collection/configs/DataCollect_baseline_quick.yaml,./data_collection/configs/DataCollect_delay_quick.yaml,./data_collection/configs/DataCollect_fault_quick.yaml" \
-      --print-level 1 --collect-print-level 1
-    end=$(date +%s)
-    elapsed=$((end - start))
-    echo ""
-    echo "QUICK test completed in $(printf '%02d:%02d:%02d\n' $((elapsed/3600)) $((elapsed%3600/60)) $((elapsed%60)))"
-    echo ""
-    ;;
-  full)
-    echo ""
-    echo "Starting FULL test suite (3-4 hours expected)..."
-    echo ""
-    start=$(date +%s)
-    bash ./scripts/setup_docker_test_env.sh >/dev/null 2>&1 || true
-    sleep 2
-    python3 Orchestration.py "./results/perf_full_$(date +%Y%m%d_%H%M)" \
-      "./data_collection/configs/DataCollect*.yaml" \
-      --print-level 2 --collect-print-level 1
-    end=$(date +%s)
-    elapsed=$((end - start))
-    echo ""
-    echo "FULL test completed in $(printf '%02d:%02d:%02d\n' $((elapsed/3600)) $((elapsed%3600/60)) $((elapsed%60)))"
-    echo ""
-    ;;
-  *)
-    cat <<'USAGE'
+  if [[ -f "${latency_svg}" && -f "${overhead_svg}" ]]; then
+    echo "[Images] Matrix SVGs already generated."
+    return 0
+  fi
 
-Usage: bash run_performance_test.sh [MODE]
+  if [[ ! -f "${result_dir}/RunLogStatsDF.csv" ]]; then
+    echo "[Images] RunLogStatsDF.csv not found; skip image regeneration."
+    return 1
+  fi
+
+  echo "[Images] Regenerating SVG outputs from RunLogStatsDF.csv ..."
+  python3 - <<PY
+from pathlib import Path
+import pandas as pd
+from summarize_matrix_results import generate_matrix_svgs
+from summarize_results import generate_packet_bytes_from_dataframe
+
+out_dir = Path(${result_dir@Q})
+df = pd.read_csv(out_dir / "RunLogStatsDF.csv")
+generate_matrix_svgs(df, out_dir)
+generate_packet_bytes_from_dataframe(df, out_dir)
+PY
+
+  if [[ -f "${latency_svg}" && -f "${overhead_svg}" ]]; then
+    echo "[Images] Matrix SVGs generated successfully."
+    return 0
+  fi
+
+  echo "[Images] Warning: matrix SVGs are still missing."
+  return 1
+}
+
+run_quick() {
+  local result_dir="${ROOT_DIR}/results/perf_quick_$(date +%Y%m%d_%H%M)"
+  local print_level=1
+  local collect_level=1
+  local dry_run=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --result-dir)
+        result_dir="$2"
+        shift 2
+        ;;
+      --print-level)
+        print_level="$2"
+        shift 2
+        ;;
+      --collect-print-level)
+        collect_level="$2"
+        shift 2
+        ;;
+      --dry-run)
+        dry_run=1
+        shift
+        ;;
+      *)
+        echo "Unknown option for quick mode: $1"
+        return 1
+        ;;
+    esac
+  done
+
+  local config_list
+  config_list="$(join_by_comma "${QUICK_CONFIGS[@]}")"
+
+  echo "[Quick] Result dir: ${result_dir}"
+  echo "[Quick] Configs   : ${config_list}"
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    echo "[Quick] Dry-run enabled; no experiment executed."
+    return 0
+  fi
+
+  local start end elapsed
+  start=$(date +%s)
+  bash "${ROOT_DIR}/scripts/setup_docker_test_env.sh" >/dev/null 2>&1 || true
+  python3 "${ROOT_DIR}/Orchestration.py" "${result_dir}" "${config_list}" \
+    --print-level "${print_level}" --collect-print-level "${collect_level}"
+  end=$(date +%s)
+  elapsed=$((end - start))
+
+  ensure_images "${result_dir}" || true
+  echo "[Quick] Completed in $(format_hms "${elapsed}")"
+  echo "[Quick] Report: ${result_dir}/ExperimentReport.md"
+}
+
+run_large() {
+  local result_dir="./results/perf_large_$(date +%Y%m%d_%H%M)"
+  local composite_cases="${DEFAULT_COMPOSITE_CASES}"
+  local iterations=8
+  local warmup_iters=3
+  local max_time_s=7200
+  local print_level=1
+  local collect_level=1
+  local dry_run=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --result-dir)
+        result_dir="$2"
+        shift 2
+        ;;
+      --composite-cases)
+        composite_cases="$2"
+        shift 2
+        ;;
+      --iterations)
+        iterations="$2"
+        shift 2
+        ;;
+      --warmup-iters)
+        warmup_iters="$2"
+        shift 2
+        ;;
+      --max-time-s)
+        max_time_s="$2"
+        shift 2
+        ;;
+      --print-level)
+        print_level="$2"
+        shift 2
+        ;;
+      --collect-print-level)
+        collect_level="$2"
+        shift 2
+        ;;
+      --dry-run)
+        dry_run=1
+        shift
+        ;;
+      *)
+        echo "Unknown option for large mode: $1"
+        return 1
+        ;;
+    esac
+  done
+
+  local cmd=(
+    python3 "${ROOT_DIR}/scripts/run_crypto_matrix.py"
+    --result-dir "${result_dir}"
+    --profiles composite
+    --composite-cases "${composite_cases}"
+    --iterations "${iterations}"
+    --warmup-iters "${warmup_iters}"
+    --max-time-s "${max_time_s}"
+    --print-level "${print_level}"
+    --collect-print-level "${collect_level}"
+  )
+
+  if [[ "${dry_run}" -eq 1 ]]; then
+    cmd+=(--dry-run --show-configs)
+  fi
+
+  echo "[Large] Composite cases: ${composite_cases}"
+  echo "[Large] Iterations     : ${iterations}"
+
+  local start end elapsed
+  start=$(date +%s)
+  bash "${ROOT_DIR}/scripts/setup_docker_test_env.sh" >/dev/null 2>&1 || true
+  "${cmd[@]}"
+  end=$(date +%s)
+  elapsed=$((end - start))
+
+  if [[ "${dry_run}" -eq 0 ]]; then
+    local abs_result_dir
+    if [[ "${result_dir}" = /* ]]; then
+      abs_result_dir="${result_dir}"
+    else
+      abs_result_dir="${ROOT_DIR}/${result_dir#./}"
+    fi
+    ensure_images "${abs_result_dir}" || true
+    echo "[Large] Report: ${abs_result_dir}/ExperimentReport.md"
+  fi
+
+  echo "[Large] Completed in $(format_hms "${elapsed}")"
+}
+
+print_usage() {
+  cat <<'USAGE'
+Usage:
+  bash scripts/run_performance_test.sh quick [options]
+  bash scripts/run_performance_test.sh large [options]
 
 Modes:
-  quick     Quick validation (5-10 min): baseline + simple delay + mixed faults
-  full      Full suite (3-4 hours): all delay/loss/rate/fault scenarios
-  
-Examples:
-  bash run_performance_test.sh quick
-  bash run_performance_test.sh full
+  quick   Fast validation using a small classic+hybrid config set.
+  large   Unified large-scale test via one parameterized matrix script.
 
-Timing Breakdown:
-  
-  QUICK (~7 min):
-    - baseline: 30s (3 IKE cycles, ~3s each)
-    - delay: 1m30s (3 values × 3 cycles)
-    - mixed faults: 1m (2 values × 3 cycles)
-    - Docker startup/teardown: 2m
-    - Log processing/plotting: 1-2m
-  
-  FULL (~3.5 hours):
-    - baseline: 50s (10 IKE cycles, ~5s each - varies based on crypto)
-    - delay sweep: 8m (5 values × 10+ cycles)
-    - loss sweep: 8m (5 values × 10+ cycles)  
-    - rate limiting: 15m (21 values × 10+ cycles)
-    - combined faults: 20m (8 values × 12 cycles)
-    - Docker startup/teardown: 5m
-    - Log processing/plotting/report: 10-15m
+quick options:
+  --result-dir <dir>
+  --print-level <n>
+  --collect-print-level <n>
+  --dry-run
 
-Outputs:
-  results/
-    └─ perf_*/
-       ├─ ExperimentReport.md        (one-page summary)
-       ├─ PlotAudit.csv              (plot quality metrics)
-       ├─ RunLogStatsDF.csv           (full statistics)
-       ├─ RunLogStatsDF_summary.csv   (compact view)
-       └─ *.png                       (scatter plots with trend lines)
-
-Requirements:
-  - Docker daemon running
-  - Python 3.8+ with numpy/pandas/plotnine (see requirements.txt)
-  - 5-20 GB free disk space (for logs and images)
-  - Network access to strongX509/pq-strongswan image
+large options:
+  --result-dir <dir>
+  --composite-cases "ideal:0:0:4000;metro:20:0.1:3200;wan:60:0.5:2200;harsh:120:2.0:1200"
+  --iterations <n>
+  --warmup-iters <n>
+  --max-time-s <sec>
+  --print-level <n>
+  --collect-print-level <n>
+  --dry-run
 
 Notes:
-  - Each test compares Post-Quantum (Kyber-3/BIKE-3) vs. Diffie-Hellman
-  - Metrics: connection %, setup time, throughput, jitter
-  - See ExperimentReport.md for detailed results and plot index
+  - Composite case format is name:rtt_ms:loss_pct:rate_kbit[:jitter_ms]
+  - RTT is automatically converted to one-way delay for netem
+  - Script checks/repairs SVG generation after non-dry-run execution
 USAGE
+}
+
+mode="${1:-}"
+if [[ -z "${mode}" ]]; then
+  print_usage
+  exit 1
+fi
+shift || true
+
+case "${mode}" in
+  quick)
+    run_quick "$@"
+    ;;
+  large)
+    run_large "$@"
+    ;;
+  *)
+    print_usage
+    exit 1
     ;;
 esac

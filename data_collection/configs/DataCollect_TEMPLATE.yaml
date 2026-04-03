@@ -1,57 +1,48 @@
 ---
 # Template: DataCollect_SCENARIO_MODIFIER.yaml
-# 
-# Instructions:
-# 1. Copy this file and rename appropriately
-# 2. Adjust CoreConfig parameters for your test scenario
-# 3. Define constraint sections (Carol_TC_Config, Moon_TC_Config) as needed
-# 4. Test with: python3 Orchestration.py ./results/test_run <this_config>
-
-CoreConfig:           # Core configuration for test execution
-  TC_Iterations: 10   # Number of tunnel setup/teardown cycles per constraint value (3-5 for quick, 10+ for production)
-  MaxTimeS: 36000     # Maximum test duration in seconds (10 hours default)
-  LocalPath: "../../" # Local directory for storing test logs and results
-  RemotePath: "/var/log/charon.log"  # Remote log file path in container
-  CommandRetries: 2   # Number of retries for failed commands
-  TrafficCommand: "ping -c 2 10.1.0.2"  # Optional: traffic generation during tunnel setup (for realistic load)
-  PrintLevel: 1       # Verbosity level (0=silent, 1=normal, 2=verbose, 3=debug)
-  compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"  # Docker Compose file location
-  Note: "YOUR_TEST_SCENARIO_DESCRIPTION"  # Metadata: appears in results and reports
-
-# Traffic Control Configuration for Carol (initiator)
-Carol_TC_Config:      # Network constraints applied to Carol's interface
-  Constraint1:        # First adjustable constraint
-    Type: netem       # Constraint type: netem (network emulation)
-    Constraint: delay # Constraint to sweep: delay, loss, duplicate, corrupt, reorder, rate
-    Interface: eth0   # Network interface to apply constraints
-    StartRange: 1     # Starting value of constraint sweep
-    EndRange: 200     # Ending value of constraint sweep
-    Units: ms         # Units: ms (delay), % (loss/dup/corrupt/reorder), kbps (rate)
-    Steps: 5          # Number of steps between start and end (will sweep through 5 values)
-    AddParams: ''     # Additional tc/netem parameters (e.g., 'distribution normal' for delay jitter)
-
-# Optional: Traffic Control Configuration for Moon (responder)
-# Uncomment to apply different constraints to Moon, or to scale constraints proportionally
-# Moon_TC_Config:
-#   Constraint1:
-#     Type: netem
-#     Constraint: loss
-#     Interface: eth0
-#     StartRange: 0.1
-#     EndRange: 5
-#     Units: '%'
-#     Steps: 5
-#     AddParams: ''
-
-# Optional: Sweep configuration modes
-# Uncomment one of the following for non-default sweep behavior:
 #
-# SweepMode: log      # Use logarithmic sweeping instead of linear
-# SweepValues: [1, 10, 100, 200]  # Explicit sweep values (overrides StartRange/EndRange/Steps)
+# Unified network profile model:
+# - Leave any profile value as empty string to mean "no limit".
+# - SweepKey/SweepValues are optional; omit them for a single static profile.
 
-# Optional: Algorithm filtering
-# AlgoParam:
-#   Baseline: true   # true=only Diffie-Helman; false=only post-quantum; omit=both (auto-detect from logs)
+CoreConfig:
+  TC_Iterations: 10
+  MaxTimeS: 36000
+  LocalPath: "../../"
+  RemotePath: "/var/log/charon.log"
+  CommandRetries: 2
+  TrafficCommand: "ping -c 2 10.1.0.2"
+  PrintLevel: 1
+  compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"
+  Note: "YOUR_TEST_SCENARIO_DESCRIPTION"
 
-# Optional: Constraints adjustment targets
-# AdjustHost: both   # which host to adjust: carol, moon, or both (default: carol)
+Carol_Network_Config:
+  Interface: eth0
+  AdjustHost: carol
+  SweepKey: delay_ms
+  SweepValues: [1, 20, 50, 100, 200]
+  Profile:
+    delay_ms: ""
+    jitter_ms: ""
+    loss_pct: ""
+    duplicate_pct: ""
+    corrupt_pct: ""
+    reorder_pct: ""
+    reorder_corr_pct: ""
+    rate_kbit: ""
+  AddParams: ""
+
+# Optional static responder profile
+# Moon_Network_Config:
+#   Interface: eth0
+#   AdjustHost: moon
+#   Profile:
+#     delay_ms: ""
+#     jitter_ms: ""
+#     loss_pct: ""
+#     duplicate_pct: ""
+#     corrupt_pct: ""
+#     reorder_pct: ""
+#     reorder_corr_pct: ""
+#     rate_kbit: ""
+#   AddParams: ""
