@@ -75,6 +75,12 @@ def Log_stats(log_dir,plvl):
 
     RunStatsDF = pd.DataFrame(data3)
 
+    if 'IsWarmup' in RunStatsDF.columns:
+        warmup_mask = RunStatsDF['IsWarmup'].fillna('0').astype(str).str.strip().str.lower().isin({'1', 'true', 'yes'})
+        if plvl >= 1:
+            print(f"Warmup rows filtered: {int(warmup_mask.sum())}")
+        RunStatsDF = RunStatsDF.loc[~warmup_mask].copy()
+
     if plvl >= 2:
         print("\n\nRunStatsDF:\n")
         display(RunStatsDF[['TotalTime','IterationTime']])

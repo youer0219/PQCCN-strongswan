@@ -22,7 +22,7 @@ Examples:
 - DataCollect_composite_ideal.yaml
 - DataCollect_composite_metro.yaml
 - DataCollect_composite_wan.yaml
-- DataCollect_composite_harsh.yaml
+- DataCollect_composite_lossy.yaml
 
 ## Retained Active Set
 
@@ -30,7 +30,7 @@ Composite network profiles (RTT + loss):
 - DataCollect_composite_ideal.yaml
 - DataCollect_composite_metro.yaml
 - DataCollect_composite_wan.yaml
-- DataCollect_composite_harsh.yaml
+- DataCollect_composite_lossy.yaml
 
 Quick validation configs:
 - DataCollect_quick_classic_ideal.yaml
@@ -100,7 +100,31 @@ All keys support empty string to indicate no limit.
 
 - "" means this dimension is not constrained.
 - 0 is treated as no limit as well.
+- -1 is treated as no limit as well (recommended for `rate_kbit` in matrix defaults).
 - Positive values enable that dimension.
+
+## Fixed Matrix Defaults
+
+The integrated matrix runner uses these defaults:
+
+Algorithms:
+- Classic-KEX + Classic-Cert
+- Hybrid(1PQ)-KEX + PQ-Cert
+- Hybrid(2PQ)-KEX + PQ-Cert
+
+Network scenarios:
+- ideal: rtt=0ms, jitter=0ms, loss=0%, rate_kbit=-1
+- metro: rtt=12ms, jitter=2ms, loss=0.1%, rate_kbit=-1
+- wan: rtt=45ms, jitter=8ms, loss=0.3%, rate_kbit=-1
+- lossy: rtt=90ms, jitter=15ms, loss=1.0%, rate_kbit=-1
+
+Default sampling counts:
+- WarmupIterations: 20
+- TC_Iterations (formal): 200
+
+Warmup behavior:
+- Warmup is executed inside the same collection flow and written into runstats metadata.
+- Warmup rows are marked with `IsWarmup=1` and excluded during final statistics aggregation.
 
 ## Sweep Rules
 

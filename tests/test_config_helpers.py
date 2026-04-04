@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import importlib.util
+import pandas as pd
 
 from config_utils import resolve_config_files
 
@@ -14,6 +15,18 @@ try:
     from data_collection.DataCollectCore import _build_netem_command
 except Exception:  # noqa: BLE001
     HAS_COLLECTOR = False
+
+HAS_LOG_PARSER = True
+try:
+    from data_parsing.LogConversion import _parse_runstats_segments
+except Exception:  # noqa: BLE001
+    HAS_LOG_PARSER = False
+
+HAS_MATRIX_PLOT = True
+try:
+    from summarize_matrix_results import generate_matrix_svgs
+except Exception:  # noqa: BLE001
+    HAS_MATRIX_PLOT = False
 
 
 class TestConfigHelpers(unittest.TestCase):
@@ -86,6 +99,33 @@ class TestConfigHelpers(unittest.TestCase):
             b.write_text("---\n", encoding="utf-8")
             out = resolve_config_files(f"{a},{b}")
             self.assertEqual(len(out), 2)
+
+    @unittest.skipUnless(HAS_LOG_PARSER, "log parser dependencies are required")
+    def test_parse_runstats_segments_keeps_is_warmup(self):
+        line = (
+            "/tmp/charon.log; ScenarioNote: demo; SweepKey: none; "
+            "NetworkProfile: n1; IsWarmup: 1; IterationTime: 1.23 seconds"
+        )
+        path, fields = _parse_runstats_segments(line)
+        self.assertEqual(path, "/tmp/charon.log")
+        self.assertEqual(fields.get("IsWarmup"), "1")
+
+    @unittest.skipUnless(HAS_MATRIX_PLOT, "matrix plotting dependencies are required")
+    def test_generate_matrix_svgs_outputs_percentile_heatmaps(self):
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td)
+            df = pd.DataFrame(
+                [
+                    {"Algorithm": "Classic-KEX + Classic-Cert", "ScenarioCase": "ideal", "p50": 0.01, "p95": 0.02, "p99": 0.03},
+                    {"Algorithm": "Hybrid(1PQ)-KEX + PQ-Cert", "ScenarioCase": "ideal", "p50": 0.02, "p95": 0.03, "p99": 0.04},
+                    {"Algorithm": "Hybrid(2PQ)-KEX + PQ-Cert", "ScenarioCase": "ideal", "p50": 0.03, "p95": 0.04, "p99": 0.05},
+                ]
+            )
+            audit = generate_matrix_svgs(df, out_dir)
+            self.assertFalse(audit.empty)
+            self.assertTrue((out_dir / "matrix_algo_scenario_p50.svg").exists())
+            self.assertTrue((out_dir / "matrix_algo_scenario_p95.svg").exists())
+            self.assertTrue((out_dir / "matrix_algo_scenario_p99.svg").exists())
 
 
 if __name__ == "__main__":

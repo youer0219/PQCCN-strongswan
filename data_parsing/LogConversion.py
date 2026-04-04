@@ -256,6 +256,7 @@ def RunStats(log_dir, FileMode):
                 carol_profile = fields.get('CarolProfile', '').strip()
                 moon_profile = fields.get('MoonProfile', '').strip()
                 tc_cmd = fields.get('tc_command', '').strip()
+                is_warmup = fields.get('IsWarmup', '0').strip()
 
                 total_time = _extract_numeric_text(fields.get('Total Time') or fields.get('TotalRunTime') or fields.get('TotalTime'))
                 iteration_time = _extract_numeric_text(fields.get('IterationTime'))
@@ -287,6 +288,7 @@ def RunStats(log_dir, FileMode):
                     'tc_interface: "' + tc_interface + '"',
                     'tc_type: "' + tc_type + '"',
                     'VariParam: "' + vari_param + '"',
+                    'IsWarmup: "' + is_warmup + '"',
                 ]
 
                 for key, value in params.items():

@@ -152,6 +152,56 @@ def _clear_remote_log(docker: DockerClient, host: str, remote_path: str, retries
     _exec_with_retry(docker, host, f"sh -lc \"echo 'newlog' > {remote_path}\"", retries=retries, plvl=plvl)
 
 
+def _copy_remote_log(docker: DockerClient, remote_path: str, local_path: str, plvl: int):
+    try:
+        docker.copy(("carol", remote_path), local_path)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        if plvl > 0:
+            print(f"copy log failed: {exc}")
+        return False
+
+
+def _append_runstats_line(
+    runstats_path: str,
+    *,
+    log_name: str,
+    note: str,
+    sweep_key: str,
+    profile_signature: str,
+    carol_profile_text: str,
+    moon_profile_text: str,
+    tc_cmd: str,
+    iteration_time: float,
+    total_time: float,
+    is_warmup: bool,
+):
+    with open(runstats_path, "a", encoding="utf-8") as f:
+        f.writelines(
+            log_name
+            + "; ScenarioNote: "
+            + note
+            + "; SweepKey: "
+            + (sweep_key if sweep_key else "none")
+            + "; NetworkProfile: "
+            + profile_signature
+            + "; CarolProfile: "
+            + carol_profile_text
+            + "; MoonProfile: "
+            + moon_profile_text
+            + "; tc_command: "
+            + tc_cmd
+            + "; IsWarmup: "
+            + ("1" if is_warmup else "0")
+            + "; IterationTime: "
+            + str(iteration_time)
+            + " seconds"
+            + "; Total Run Time: "
+            + str(total_time)
+            + " seconds\n"
+        )
+
+
 def _run_iteration_batch(
     docker: DockerClient,
     traffic_cmd: str,
@@ -436,7 +486,26 @@ def RunConfig(ymlConfig, log_dir, plvl):
         if warmup_n > 0 and warmup_scope == "per_config":
             if pLvl > 0:
                 print(" -- Warm-up Run (per_config) -- ")
-            warmup_elapsed_total += _run_iteration_batch(docker, traffic_cmd, warmup_n, retries, pLvl)
+            warmup_t = _run_iteration_batch(docker, traffic_cmd, warmup_n, retries, pLvl)
+            warmup_elapsed_total += warmup_t
+
+            date_time = time.strftime("%Y%m%d_%H%M")
+            warmup_name = f"{log_local_path}charon-{date_time}-global_warmup__iter_{warmup_n}.log"
+            if _copy_remote_log(docker, remote_path, warmup_name, pLvl):
+                _append_runstats_line(
+                    f"{log_local_path}runstats.txt",
+                    log_name=warmup_name,
+                    note=(note + "__warmup") if note else "warmup",
+                    sweep_key="none",
+                    profile_signature="global_warmup",
+                    carol_profile_text="global_warmup",
+                    moon_profile_text="global_warmup",
+                    tc_cmd="warmup",
+                    iteration_time=warmup_t,
+                    total_time=(time.perf_counter() - startrun_tic - warmup_elapsed_total),
+                    is_warmup=True,
+                )
+
             _clear_remote_log(docker, "carol", remote_path, retries, pLvl)
             _exec_with_retry(docker, "carol", "swanctl --reload-settings", retries=retries, plvl=pLvl)
             time.sleep(1)
@@ -492,6 +561,37 @@ def RunConfig(ymlConfig, log_dir, plvl):
                     print(f" -- Warm-up Run (point {i + 1}/{len(c_vals)}) -- ")
                 warmup_elapsed_this_point = _run_iteration_batch(docker, traffic_cmd, warmup_n, retries, pLvl)
                 warmup_elapsed_total += warmup_elapsed_this_point
+
+                date_time = time.strftime("%Y%m%d_%H%M")
+                warmup_signature = _network_signature(
+                    current_carol_profile,
+                    carol_cfg["add_params"],
+                    current_moon_profile,
+                    moon_cfg["add_params"],
+                )
+                warmup_slug = _slugify(warmup_signature)
+                note_slug = _slugify(note) if note else ""
+                warmup_parts = [warmup_slug, f"iter_{warmup_n}"]
+                if note_slug:
+                    warmup_parts.append(note_slug)
+                warmup_parts.append("warmup")
+                warmup_name = f"{log_local_path}charon-{date_time}-{'__'.join(warmup_parts)}.log"
+
+                if _copy_remote_log(docker, remote_path, warmup_name, pLvl):
+                    _append_runstats_line(
+                        f"{log_local_path}runstats.txt",
+                        log_name=warmup_name,
+                        note=(note + "__warmup") if note else "warmup",
+                        sweep_key=(sweep_key if sweep_key else "none"),
+                        profile_signature=warmup_signature,
+                        carol_profile_text=_profile_text(current_carol_profile, carol_cfg["add_params"]),
+                        moon_profile_text=_profile_text(current_moon_profile, moon_cfg["add_params"]),
+                        tc_cmd=tc_cmd,
+                        iteration_time=warmup_elapsed_this_point,
+                        total_time=(time.perf_counter() - startrun_tic - warmup_elapsed_total),
+                        is_warmup=True,
+                    )
+
                 _clear_remote_log(docker, "carol", remote_path, retries, pLvl)
                 _exec_with_retry(docker, "carol", "swanctl --reload-settings", retries=retries, plvl=pLvl)
                 time.sleep(1)
@@ -523,11 +623,7 @@ def RunConfig(ymlConfig, log_dir, plvl):
             run_name = "__".join(name_parts)
             log_name = f"{log_local_path}charon-{date_time}-{run_name}.log"
 
-            try:
-                docker.copy(("carol", remote_path), log_name)
-            except Exception as exc:  # noqa: BLE001
-                if pLvl > 0:
-                    print(f"copy log failed: {exc}")
+            _copy_remote_log(docker, remote_path, log_name, pLvl)
             _clear_remote_log(docker, "carol", remote_path, retries, pLvl)
             _exec_with_retry(docker, "carol", "swanctl --reload-settings", retries=retries, plvl=pLvl)
 
@@ -539,28 +635,19 @@ def RunConfig(ymlConfig, log_dir, plvl):
                 print(f"Last Run Time: {l1_time} seconds")
                 print(f"Estimated Remaining Time: {est_rem} seconds")
 
-            with open(f"{log_local_path}runstats.txt", "a", encoding="utf-8") as f:
-                f.writelines(
-                    log_name
-                    + "; ScenarioNote: "
-                    + note
-                    + "; SweepKey: "
-                    + (sweep_key if sweep_key else "none")
-                    + "; NetworkProfile: "
-                    + profile_signature
-                    + "; CarolProfile: "
-                    + _profile_text(current_carol_profile, carol_cfg["add_params"])
-                    + "; MoonProfile: "
-                    + _profile_text(current_moon_profile, moon_cfg["add_params"])
-                    + "; tc_command: "
-                    + tc_cmd
-                    + "; IterationTime: "
-                    + str(l1_time)
-                    + " seconds"
-                    + "; Total Run Time: "
-                    + str(total_time)
-                    + " seconds\n"
-                )
+            _append_runstats_line(
+                f"{log_local_path}runstats.txt",
+                log_name=log_name,
+                note=note,
+                sweep_key=(sweep_key if sweep_key else "none"),
+                profile_signature=profile_signature,
+                carol_profile_text=_profile_text(current_carol_profile, carol_cfg["add_params"]),
+                moon_profile_text=_profile_text(current_moon_profile, moon_cfg["add_params"]),
+                tc_cmd=tc_cmd,
+                iteration_time=l1_time,
+                total_time=total_time,
+                is_warmup=False,
+            )
 
             if time.perf_counter() - startrun_tic - warmup_elapsed_total > max_run_time:
                 break

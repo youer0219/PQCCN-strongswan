@@ -28,7 +28,7 @@ bash ./scripts/run_performance_test.sh large
 - data_collection/configs/DataCollect_composite_ideal.yaml
 - data_collection/configs/DataCollect_composite_metro.yaml
 - data_collection/configs/DataCollect_composite_wan.yaml
-- data_collection/configs/DataCollect_composite_harsh.yaml
+- data_collection/configs/DataCollect_composite_lossy.yaml
 
 ### 快速验证配置（2个）
 - data_collection/configs/DataCollect_quick_classic_ideal.yaml
@@ -43,20 +43,25 @@ bash ./scripts/run_performance_test.sh large
 ```bash
 bash ./scripts/run_performance_test.sh large \
   --result-dir ./results/perf_large_$(date +%Y%m%d_%H%M) \
-  --composite-cases "ideal:0:0:4000;metro:20:0.1:3200;wan:60:0.5:2200;harsh:120:2.0:1200" \
-  --iterations 8 \
-  --warmup-iters 3 \
+  --composite-cases "ideal:0:0:0;metro:12:2:0.1;wan:45:8:0.3;lossy:90:15:1.0" \
+  --iterations 200 \
+  --warmup-iters 20 \
   --max-time-s 7200
 ```
 
 `--composite-cases` 格式：
-- name:rtt_ms:loss_pct:rate_kbit[:jitter_ms]
+- name:rtt_ms:jitter_ms:loss_pct[:rate_kbit]
+
+说明：
+- 默认不传 `rate_kbit` 时表示不限速（内部等价为 -1）。
+- 默认算法矩阵固定为 Classic、Hybrid(1PQ)、Hybrid(2PQ)。
 
 ## 4. 图像生成保证
 
 统一脚本在测试完成后会检查并确保以下图像生成：
-- matrix_latency_percentiles.svg
-- matrix_overhead.svg
+- matrix_algo_scenario_p50.svg
+- matrix_algo_scenario_p95.svg
+- matrix_algo_scenario_p99.svg
 
 若缺失，会基于 RunLogStatsDF.csv 自动尝试补生成。
 
@@ -67,8 +72,11 @@ bash ./scripts/run_performance_test.sh large \
 - RunLogStatsDF.csv
 - RunLogStatsDF_summary.csv
 - PlotAudit.csv
+- matrix_algo_scenario_p50.svg
+- matrix_algo_scenario_p95.svg
+- matrix_algo_scenario_p99.svg
 - matrix_latency_percentiles.svg
-- matrix_overhead.svg
+- matrix_overhead_percentiles.svg
 - packet_bytes.svg（若数据列存在）
 
 ## 6. 校验命令

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-DEFAULT_COMPOSITE_CASES="ideal:0:0:4000;metro:20:0.1:3200;wan:60:0.5:2200;harsh:120:2.0:1200"
+DEFAULT_COMPOSITE_CASES="ideal:0:0:0;metro:12:2:0.1;wan:45:8:0.3;lossy:90:15:1.0"
 
 QUICK_CONFIGS=(
   "${ROOT_DIR}/data_collection/configs/DataCollect_quick_classic_ideal.yaml"
@@ -22,11 +22,12 @@ format_hms() {
 
 ensure_images() {
   local result_dir="$1"
-  local latency_svg="${result_dir}/matrix_latency_percentiles.svg"
-  local overhead_svg="${result_dir}/matrix_overhead.svg"
+  local p50_svg="${result_dir}/matrix_algo_scenario_p50.svg"
+  local p95_svg="${result_dir}/matrix_algo_scenario_p95.svg"
+  local p99_svg="${result_dir}/matrix_algo_scenario_p99.svg"
 
-  if [[ -f "${latency_svg}" && -f "${overhead_svg}" ]]; then
-    echo "[Images] Matrix SVGs already generated."
+  if [[ -f "${p50_svg}" && -f "${p95_svg}" && -f "${p99_svg}" ]]; then
+    echo "[Images] Matrix percentile SVGs already generated."
     return 0
   fi
 
@@ -48,12 +49,12 @@ generate_matrix_svgs(df, out_dir)
 generate_packet_bytes_from_dataframe(df, out_dir)
 PY
 
-  if [[ -f "${latency_svg}" && -f "${overhead_svg}" ]]; then
-    echo "[Images] Matrix SVGs generated successfully."
+  if [[ -f "${p50_svg}" && -f "${p95_svg}" && -f "${p99_svg}" ]]; then
+    echo "[Images] Matrix percentile SVGs generated successfully."
     return 0
   fi
 
-  echo "[Images] Warning: matrix SVGs are still missing."
+  echo "[Images] Warning: matrix percentile SVGs are still missing."
   return 1
 }
 
@@ -115,8 +116,8 @@ run_quick() {
 run_large() {
   local result_dir="./results/perf_large_$(date +%Y%m%d_%H%M)"
   local composite_cases="${DEFAULT_COMPOSITE_CASES}"
-  local iterations=8
-  local warmup_iters=3
+  local iterations=200
+  local warmup_iters=20
   local max_time_s=7200
   local print_level=1
   local collect_level=1
@@ -166,7 +167,6 @@ run_large() {
   local cmd=(
     python3 "${ROOT_DIR}/scripts/run_crypto_matrix.py"
     --result-dir "${result_dir}"
-    --profiles composite
     --composite-cases "${composite_cases}"
     --iterations "${iterations}"
     --warmup-iters "${warmup_iters}"
@@ -221,7 +221,7 @@ quick options:
 
 large options:
   --result-dir <dir>
-  --composite-cases "ideal:0:0:4000;metro:20:0.1:3200;wan:60:0.5:2200;harsh:120:2.0:1200"
+  --composite-cases "ideal:0:0:0;metro:12:2:0.1;wan:45:8:0.3;lossy:90:15:1.0[:rate_kbit]"
   --iterations <n>
   --warmup-iters <n>
   --max-time-s <sec>
@@ -230,8 +230,9 @@ large options:
   --dry-run
 
 Notes:
-  - Composite case format is name:rtt_ms:loss_pct:rate_kbit[:jitter_ms]
+  - Composite case format is name:rtt_ms:jitter_ms:loss_pct[:rate_kbit]
   - RTT is automatically converted to one-way delay for netem
+  - Omitted rate_kbit means unlimited bandwidth (internally -1)
   - Script checks/repairs SVG generation after non-dry-run execution
 USAGE
 }

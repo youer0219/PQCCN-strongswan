@@ -10,6 +10,8 @@ PQCCN-strongswan 是一个基于 strongSwan 容器环境的自动化实验流水
 - 允许网络字段留空，表示该维度不限制
 - 日志命名绑定“全量网络画像”，不再只绑定 delay
 - 图表 detail 不再硬编码 delay 字段
+- large 模式固定为 3 算法 × 4 网络场景矩阵（串行）
+- 预热嵌入主测试流，按 `IsWarmup=1` 在统计阶段过滤
 
 ## 快速开始
 
@@ -29,7 +31,7 @@ bash ./scripts/install_python_deps.sh
 bash ./scripts/run_performance_test.sh quick
 ```
 
-完整测试（约 3-4 小时）：
+完整测试（默认每点预热 20 次 + 正式 200 次，串行）：
 
 ```bash
 bash ./scripts/run_performance_test.sh large
@@ -39,6 +41,28 @@ bash ./scripts/run_performance_test.sh large
 
 ```bash
 python3 Orchestration.py ./results/custom_run "./data_collection/configs/DataCollect_composite_ideal.yaml,./data_collection/configs/DataCollect_composite_wan.yaml"
+```
+
+## 固定矩阵默认值
+
+large 模式固定算法组合：
+- Classic-KEX + Classic-Cert
+- Hybrid(1PQ)-KEX + PQ-Cert
+- Hybrid(2PQ)-KEX + PQ-Cert
+
+large 模式固定网络场景（`rtt/jitter/loss`）：
+- ideal: `0/0/0%`
+- metro: `12/2/0.1%`
+- wan: `45/8/0.3%`
+- lossy: `90/15/1.0%`
+
+默认 `rate_kbit=-1`（不限速）。如果要限速，可通过 `--composite-cases` 覆盖并为某场景追加第 5 段 `rate_kbit`。
+
+例如：
+
+```bash
+bash scripts/run_performance_test.sh large \
+  --composite-cases "ideal:0:0:0;metro:12:2:0.1:5000;wan:45:8:0.3:2000;lossy:90:15:1.0:1200"
 ```
 
 ## 配置模型（统一网络画像）
@@ -82,8 +106,11 @@ Carol_Network_Config:
 - `RunLogStatsDF.csv`：全量统计
 - `RunLogStatsDF_summary.csv`：摘要视图
 - `PlotAudit.csv`：图形审计信息
-- `matrix_latency_percentiles.svg`：矩阵分位数图
-- `matrix_overhead.svg`：矩阵开销图
+- `matrix_algo_scenario_p50.svg`：P50 算法×网络热力图
+- `matrix_algo_scenario_p95.svg`：P95 算法×网络热力图
+- `matrix_algo_scenario_p99.svg`：P99 算法×网络热力图
+- `matrix_latency_percentiles.svg`：P50/P95/P99 合并面板图
+- `matrix_overhead_percentiles.svg`：P50/P95/P99 相对 Classic 开销面板图
 - `packet_bytes.svg`：可选报文大小图
 
 ## 主要脚本入口
