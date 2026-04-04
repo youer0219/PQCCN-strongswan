@@ -8,6 +8,8 @@ services:
       - SYS_MODULE
     stdin_open: true
     tty: true
+    sysctls:
+      net.ipv4.ip_forward: "1"
     volumes:
       - ./moon/DH:/etc/swanctl
       - ./moon/swanctl_hybrid2pq_cert.conf:/etc/swanctl/swanctl.conf
@@ -35,6 +37,22 @@ services:
     networks:
       internet:
          ipv4_address: 192.168.0.3
+  lanhost:
+    image: strongx509/pq-strongswan:latest
+    container_name: lanhost
+    depends_on:
+      - moon
+    cap_add:
+      - NET_ADMIN
+    command:
+      - /bin/bash
+      - -lc
+      - ip route replace 10.3.0.0/24 via 10.1.0.2 && tail -f /dev/null
+    stdin_open: true
+    tty: true
+    networks:
+      intranet:
+         ipv4_address: 10.1.0.3
 
 networks:
   internet:

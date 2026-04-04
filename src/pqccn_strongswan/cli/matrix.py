@@ -150,7 +150,7 @@ def main() -> int:
         help="When to run warm-up iterations",
     )
     parser.add_argument("--max-time-s", type=int, default=7200, help="Max runtime budget per config")
-    parser.add_argument("--traffic-cmd", default="ping -c 2 10.1.0.2", help="Traffic command during each iteration")
+    parser.add_argument("--traffic-cmd", default="ping -c 2 10.1.0.3", help="Traffic command during each iteration")
     parser.add_argument("--print-level", type=int, default=1, help="Pipeline print level")
     parser.add_argument("--collect-print-level", type=int, default=1, help="Collector print level")
     parser.add_argument(
@@ -208,6 +208,11 @@ def main() -> int:
                     warmup_scope=args.warmup_scope,
                 ),
                 "Carol_Network_Config": net_cfg,
+                "Moon_Network_Config": {
+                    "Interface": "eth0",
+                    "AdjustHost": "moon",
+                    "Profile": dict(net_cfg["Profile"]),
+                },
             }
             cfg_path = cfg_dir / f"composite_{scenario['name']}_{case['name']}.yaml"
             _write_yaml(cfg_path, cfg)

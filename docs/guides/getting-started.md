@@ -31,6 +31,8 @@ bash ./scripts/setup_docker_test_env.sh
 bash ./scripts/run_performance_test.sh quick
 ```
 
+默认 quick 链路会验证 `carol -> moon -> lanhost(10.1.0.3)` 的数据路径。
+
 固定矩阵实验：
 
 ```bash

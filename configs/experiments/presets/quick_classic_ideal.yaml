@@ -5,7 +5,7 @@ CoreConfig:
   LocalPath: "../../"
   RemotePath: "/var/log/charon.log"
   CommandRetries: 2
-  TrafficCommand: "ping -c 2 10.1.0.2"
+  TrafficCommand: "ping -c 2 10.1.0.3"
   PrintLevel: 1
   compose_files: "./pq-strongswan/baseline-docker-compose.yml"
   Note: "classic_classic__quick__ideal"
@@ -13,6 +13,20 @@ CoreConfig:
 Carol_Network_Config:
   Interface: eth0
   AdjustHost: carol
+  Profile:
+    delay_ms: ""
+    jitter_ms: ""
+    loss_pct: ""
+    duplicate_pct: ""
+    corrupt_pct: ""
+    reorder_pct: ""
+    reorder_corr_pct: ""
+    rate_kbit: ""
+  AddParams: ""
+
+Moon_Network_Config:
+  Interface: eth0
+  AdjustHost: moon
   Profile:
     delay_ms: ""
     jitter_ms: ""

@@ -36,5 +36,6 @@ printf '%s\n' "$running_services"
 
 grep -qx "moon" <<<"$running_services" || { echo "moon service is not running"; exit 1; }
 grep -qx "carol" <<<"$running_services" || { echo "carol service is not running"; exit 1; }
+grep -qx "lanhost" <<<"$running_services" || { echo "lanhost service is not running"; exit 1; }
 
 echo "Docker test environment is ready."

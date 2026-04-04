@@ -16,6 +16,8 @@ bash ./scripts/run_performance_test.sh quick
 - `configs/experiments/presets/quick_classic_ideal.yaml`
 - `configs/experiments/presets/quick_hybrid_ideal.yaml`
 
+默认业务流量为 `ping -c 2 10.1.0.3`，用于验证流量是否真正穿过 `moon` 到达内网主机 `lanhost`。
+
 ### `large`
 
 运行固定的 3 算法 × 4 网络场景矩阵：
@@ -53,6 +55,7 @@ bash ./scripts/run_performance_test.sh large \
 
 说明：
 - `rtt_ms` 会自动转换为单向 `delay_ms=RTT/2`
+- 生成的矩阵 YAML 会默认把同一组 WAN 画像同时写入 `Carol_Network_Config` 和 `Moon_Network_Config`
 - 省略 `rate_kbit` 时表示不限速
 - large 模式会自动生成中间 YAML 配置到结果目录下的 `generated_configs/`
 

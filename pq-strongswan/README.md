@@ -43,7 +43,7 @@ The build rules are defined in [Dockerfile](Dockerfile).
 
 ### Create Docker Containers and Local Networks
 
-We clone the strongSwan `docker-compose` environment which automatically installs the `strongx509/pq-strongswan` docker image and brings the `moon` and `carol` docker containers up:
+We clone the strongSwan `docker-compose` environment which automatically installs the `strongx509/pq-strongswan` docker image and brings the `moon`, `carol`, and `lanhost` docker containers up:
 
 ```console
 $ git clone https://github.com/strongX509/docker.git
@@ -52,15 +52,17 @@ $ sh scripts/gen_dirs.sh
 $ docker-compose up
 Creating moon ... done
 Creating carol ... done
-Attaching to moon, carol
+Creating lanhost ... done
+Attaching to moon, carol, lanhost
 ```
 The network topology that has been created looks as follows:
 ```
-               +-------+                        +--------+
-  10.3.0.1 --- | carol | === 192.168.0.0/24 === |  moon  | --- 10.1.0.0/16
- Virtual IP    +-------+ .3     Internet     .2 +--------+ .2    Intranet
+               +-------+                        +--------+      +---------+
+  10.3.0.1 --- | carol | === 192.168.0.0/24 === |  moon  | ---- | lanhost |
+ Virtual IP    +-------+ .3     Internet     .2 +--------+ .2   +---------+
+                                                                10.1.0.3
 ```
-VPN client `carol` and VPN gateway `moon` are connected with each other via the `192.168.0.0/24` network emulating the `Internet`. Behind `moon` there is an additional `10.1.0.0/16` network acting as an `Intranet`. Within the IPsec tunnel `carol` is going to use the virtual IP address `10.3.0.1`  that will be assigned to the client  by the gateway via the IKEv2 protocol.
+VPN client `carol` and VPN gateway `moon` are connected with each other via the `192.168.0.0/24` network emulating the `Internet`. Behind `moon` there is an additional `10.1.0.0/24` network acting as an `Intranet`, and `lanhost` is used as a backend traffic endpoint. Within the IPsec tunnel `carol` is going to use the virtual IP address `10.3.0.1` that will be assigned to the client by the gateway via the IKEv2 protocol.
 
 ## strongSwan Configuration <a name="section2"></a>
 
@@ -190,8 +192,8 @@ connections {
          id = moon.strongswan.org
       }
       children {
-         net {
-            remote_ts = 10.1.0.0/16
+        net {
+            remote_ts = 10.1.0.0/24
             esp_proposals = ke1_kyber3-ke2_bike3-aes256-sha256-x25519
             rekey_time = 30m
           }
@@ -207,7 +209,7 @@ connections {
 }
 ```
 Two child security associations are defined:
-* The `net` `CHILD_SA`  connecting the client with the subnet`10.1.0.0/16` behind the gateway
+* The `net` `CHILD_SA`  connecting the client with the subnet`10.1.0.0/24` behind the gateway
 * The `host` `CHILD_SA` connecting the client with the outer IP address of the gateway itself.
 
 Due to  the `rekey` parameter the `CHILD_SAs` will be periodically rekeyed every `20` minutes (`1200` seconds ) whereas the `IKE_SA` will be rekeyed every `30` minutes (`1800` seconds) in order to demonstrate the post-quantum multi-key rekeying process. The default rekeying values are `1` hour (`3600` seconds) and `4` hours (`14400` seconds), respectively.
@@ -383,7 +385,7 @@ home: IKEv2, no reauthentication, rekeying every 1800s
     id: moon.strongswan.org
   net: TUNNEL, rekeying every 1200s
     local:  dynamic
-    remote: 10.1.0.0/16
+    remote: 10.1.0.0/24
   host: TUNNEL, rekeying every 1200s
     local:  dynamic
     remote: dynamic
@@ -733,16 +735,16 @@ The `BIKE` public key and encrypted secret need three `IKE_FOLLOWUP_KE` fragment
 
 ## Use the IPsec Tunnels <a name="section6"></a>
 
-First we ping the network behind gateway `moon`
+First we ping the backend host behind gateway `moon`
 ```console
-carol# ping -c 2 10.1.0.2
+carol# ping -c 2 10.1.0.3
 
 
-PING 10.1.0.2 (10.1.0.2) 56(84) bytes of data.
-64 bytes from 10.1.0.2: icmp_seq=1 ttl=64 time=0.108 ms
-64 bytes from 10.1.0.2: icmp_seq=2 ttl=64 time=0.225 ms
+PING 10.1.0.3 (10.1.0.3) 56(84) bytes of data.
+64 bytes from 10.1.0.3: icmp_seq=1 ttl=63 time=0.108 ms
+64 bytes from 10.1.0.3: icmp_seq=2 ttl=63 time=0.225 ms
 ```
-and then the gateway `moon` on its external IP address itself
+and then, optionally, the gateway `moon` on its external IP address itself
 ```console
 carol# ping -c 1 192.168.0.2
 
@@ -1105,5 +1107,3 @@ We offer our thanks and attribution to the original pq-strongswan author:  [Andr
 
 [AS]: mailto:andreas.steffen@strongsec.net
 [CC]: http://creativecommons.org/licenses/by/4.0/
-
-

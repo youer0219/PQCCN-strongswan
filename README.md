@@ -2,6 +2,14 @@
 
 `PQCCN-strongswan` 是一个基于 strongSwan 容器环境的自动化实验流水线，用于对比经典与后量子 IKEv2 方案在受限网络下的连接性能。
 
+当前默认拓扑为 `carol -> moon -> lanhost`：
+- `carol`：VPN 客户端，公网侧 `192.168.0.3`
+- `moon`：VPN 网关兼内网路由，公网侧 `192.168.0.2`，内网侧 `10.1.0.2`
+- `lanhost`：`moon` 后侧内网业务主机，地址 `10.1.0.3`
+- `10.3.0.0/24`：客户端通过 IKEv2 获取的虚拟地址池
+
+默认业务流量命令会在建隧后从 `carol` 访问 `lanhost`，不再默认打到网关自身。
+
 仓库现已完成两项整理：
 - Python 代码收敛到标准 `src/` 包布局，主包为 `pqccn_strongswan`
 - 原 `Writerside/` 文档站已移除，长期维护文档统一收敛到 [`docs/`](docs/README.md)

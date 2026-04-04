@@ -11,7 +11,7 @@ CoreConfig:
   LocalPath: "../../"
   RemotePath: "/var/log/charon.log"
   CommandRetries: 2
-  TrafficCommand: "ping -c 2 10.1.0.2"
+  TrafficCommand: "ping -c 2 10.1.0.3"
   PrintLevel: 1
   compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"
   Note: "YOUR_TEST_SCENARIO_DESCRIPTION"
@@ -32,7 +32,8 @@ Carol_Network_Config:
     rate_kbit: ""
   AddParams: ""
 
-# Optional static responder profile
+# Optional static responder profile. For symmetric WAN emulation, mirror the
+# same Profile values onto Moon_Network_Config.
 # Moon_Network_Config:
 #   Interface: eth0
 #   AdjustHost: moon

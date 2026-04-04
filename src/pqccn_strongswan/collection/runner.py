@@ -427,7 +427,7 @@ def RunConfig(ymlConfig, log_dir, plvl):
     mirror_moon = _as_bool(core.get("MirrorMoon", False))
     fresh_run = _as_bool(core.get("FreshRun", False))
     retries = max(1, int(core.get("CommandRetries", 1)))
-    traffic_cmd = str(core.get("TrafficCommand", "ping -c 2 10.1.0.2"))
+    traffic_cmd = str(core.get("TrafficCommand", "ping -c 2 10.1.0.3"))
     ipsec_n = _resolve_iteration_count(core)
     warmup_n, warmup_scope = _resolve_warmup_config(core)
 
@@ -459,7 +459,7 @@ def RunConfig(ymlConfig, log_dir, plvl):
             try:
                 import subprocess
 
-                subprocess.run(["docker", "rm", "-f", "moon", "carol"], capture_output=True)
+                subprocess.run(["docker", "rm", "-f", "moon", "carol", "lanhost"], capture_output=True)
                 docker.compose.down(remove_orphans=True)
             except Exception:
                 pass

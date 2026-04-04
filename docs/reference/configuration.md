@@ -51,6 +51,21 @@ Moon_Network_Config: {}
 | `WarmupIterations` | 预热次数 |
 | `WarmupScope` | `per_config` / `per_point` / `off` |
 
+默认约定：
+- `TrafficCommand` 默认值为 `ping -c 2 10.1.0.3`
+- `10.1.0.2` 是 `moon` 的内网网关地址，仅用于诊断
+- `10.1.0.3` 是 `lanhost` 业务主机地址，作为默认业务流量目标
+
+## 默认地址语义
+
+| 地址 | 角色 |
+| --- | --- |
+| `192.168.0.3` | `carol` 公网侧 |
+| `192.168.0.2` | `moon` 公网侧 |
+| `10.1.0.2` | `moon` 内网网关 |
+| `10.1.0.3` | `lanhost` 内网业务主机 |
+| `10.3.0.0/24` | `carol` 经 IKEv2 获得的虚拟地址池 |
+
 ## `Carol_Network_Config` / `Moon_Network_Config`
 
 常用字段：
@@ -89,6 +104,7 @@ CoreConfig:
   TC_Iterations: 10
   MaxTimeS: 36000
   RemotePath: "/var/log/charon.log"
+  TrafficCommand: "ping -c 2 10.1.0.3"
   compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"
   Note: "example"
 
@@ -97,6 +113,19 @@ Carol_Network_Config:
   AdjustHost: carol
   SweepKey: delay_ms
   SweepValues: [1, 20, 50, 100]
+  Profile:
+    delay_ms: ""
+    jitter_ms: ""
+    loss_pct: ""
+    duplicate_pct: ""
+    corrupt_pct: ""
+    reorder_pct: ""
+    reorder_corr_pct: ""
+    rate_kbit: ""
+
+Moon_Network_Config:
+  Interface: eth0
+  AdjustHost: moon
   Profile:
     delay_ms: ""
     jitter_ms: ""

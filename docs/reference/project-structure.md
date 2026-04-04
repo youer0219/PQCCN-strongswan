@@ -9,7 +9,7 @@
 - `scripts/`
   命令行辅助脚本，包括快速测试、矩阵测试和环境安装脚本。
 - `pq-strongswan/`
-  Dockerfile、compose 文件、证书和 strongSwan 配置资产。
+  Dockerfile、compose 文件、证书和 strongSwan 配置资产；当前 compose 拓扑默认包含 `carol`、`moon` 和后端主机 `lanhost`。
 - `tests/`
   自动化测试。
 - `docs/`

@@ -5,6 +5,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
@@ -117,6 +118,29 @@ class TestConfigHelpers(unittest.TestCase):
         self.assertGreaterEqual(len(out), 6)
         self.assertTrue(any(path.endswith("composite_ideal.yaml") for path in out))
 
+    def test_presets_target_lanhost_and_define_moon_profile(self):
+        presets_dir = PROJECT_ROOT / "configs" / "experiments" / "presets"
+        preset_paths = sorted(presets_dir.glob("*.yaml"))
+        self.assertGreaterEqual(len(preset_paths), 6)
+
+        for path in preset_paths:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["CoreConfig"]["TrafficCommand"], "ping -c 2 10.1.0.3")
+            self.assertIn("Moon_Network_Config", data)
+            self.assertEqual(data["Moon_Network_Config"]["AdjustHost"], "moon")
+
+    def test_moon_virtual_ip_pools_use_dedicated_remote_access_subnet(self):
+        moon_cfg_paths = [
+            PROJECT_ROOT / "pq-strongswan" / "moon" / "DH" / "swanctl.conf",
+            PROJECT_ROOT / "pq-strongswan" / "moon" / "swanctl_hybrid1pq.conf",
+            PROJECT_ROOT / "pq-strongswan" / "moon" / "swanctl_hybrid2pq.conf",
+            PROJECT_ROOT / "pq-strongswan" / "moon" / "swanctl_hybrid2pq_cert.conf",
+        ]
+
+        for path in moon_cfg_paths:
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("addrs = 10.3.0.0/24", text, msg=str(path))
+
     @unittest.skipUnless(HAS_LOG_PARSER, "log parser dependencies are required")
     def test_parse_runstats_segments_keeps_is_warmup(self):
         line = (
@@ -171,6 +195,40 @@ class TestConfigHelpers(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, msg=proc.stderr)
         self.assertIn("Run full fixed matrix for crypto algorithms x network profiles", proc.stdout)
+
+    def test_matrix_dry_run_generates_lanhost_target_and_mirrored_profiles(self):
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(SRC_DIR) + (f":{env['PYTHONPATH']}" if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as td:
+            result_dir = Path(td) / "matrix_out"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pqccn_strongswan.cli.matrix",
+                    "--dry-run",
+                    "--result-dir",
+                    str(result_dir),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+
+            cfg_path = result_dir / "generated_configs" / "composite_classic_classic_ideal.yaml"
+            self.assertTrue(cfg_path.exists())
+
+            data = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["CoreConfig"]["TrafficCommand"], "ping -c 2 10.1.0.3")
+            self.assertIn("Moon_Network_Config", data)
+            self.assertEqual(
+                data["Carol_Network_Config"]["Profile"],
+                data["Moon_Network_Config"]["Profile"],
+            )
 
 
 if __name__ == "__main__":
