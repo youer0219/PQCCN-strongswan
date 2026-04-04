@@ -78,8 +78,20 @@ def Log_stats(log_dir,plvl):
     if 'IsWarmup' in RunStatsDF.columns:
         warmup_mask = RunStatsDF['IsWarmup'].fillna('0').astype(str).str.strip().str.lower().isin({'1', 'true', 'yes'})
         if plvl >= 1:
-            print(f"Warmup rows filtered: {int(warmup_mask.sum())}")
+            print(f"Warmup rows filtered (IsWarmup): {int(warmup_mask.sum())}")
         RunStatsDF = RunStatsDF.loc[~warmup_mask].copy()
+    
+    # Also filter rows where ScenarioCase or VariParam contains 'warmup'
+    if 'ScenarioCase' in RunStatsDF.columns:
+        scenario_warmup_mask = RunStatsDF['ScenarioCase'].fillna('').astype(str).str.lower().str.contains('warmup', regex=False)
+        if plvl >= 1:
+            print(f"Warmup rows filtered (ScenarioCase): {int(scenario_warmup_mask.sum())}")
+        RunStatsDF = RunStatsDF.loc[~scenario_warmup_mask].copy()
+    elif 'VariParam' in RunStatsDF.columns:
+        variParam_warmup_mask = RunStatsDF['VariParam'].fillna('').astype(str).str.lower().str.contains('warmup', regex=False)
+        if plvl >= 1:
+            print(f"Warmup rows filtered (VariParam): {int(variParam_warmup_mask.sum())}")
+        RunStatsDF = RunStatsDF.loc[~variParam_warmup_mask].copy()
 
     if plvl >= 2:
         print("\n\nRunStatsDF:\n")

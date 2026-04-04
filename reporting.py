@@ -9,10 +9,51 @@ def _fmt_num(value):
         return str(value)
 
 
-def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
-    """Generate a one-page markdown experiment report in the result directory."""
+def _filter_warmup_from_dataframe(df):
+    """Filter out warmup data from DataFrame.
+    
+    Returns a copy of the DataFrame with warmup rows removed.
+    Warmup data is identified by either:
+    - IsWarmup column set to True/1/yes
+    - ScenarioCase containing 'warmup'
+    """
+    if df is None or df.empty:
+        return df.copy()
+    
+    result = df.copy()
+    
+    # Filter by IsWarmup column if it exists
+    if 'IsWarmup' in result.columns:
+        warmup_mask = result['IsWarmup'].fillna('0').astype(str).str.strip().str.lower().isin({'1', 'true', 'yes'})
+        result = result.loc[~warmup_mask].copy()
+    
+    # Also filter by ScenarioCase if it contains 'warmup'
+    if 'ScenarioCase' in result.columns:
+        scenario_mask = result['ScenarioCase'].fillna('').astype(str).str.lower().str.contains('warmup', regex=False)
+        result = result.loc[~scenario_mask].copy()
+    
+    return result
+
+
+def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df, include_warmup=False):
+    """Generate a one-page markdown experiment report in the result directory.
+    
+    Args:
+        log_dir: Output directory for the report
+        run_log_stats_df: DataFrame with run statistics  
+        plot_audit_df: DataFrame with plot audit information
+        include_warmup: If False (default), filter out warmup data. If True, include warmup data.
+    
+    Returns:
+        Path to the generated report
+    """
     out_dir = Path(log_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Filter out warmup data unless explicitly requested
+    data_for_report = run_log_stats_df
+    if not include_warmup:
+        data_for_report = _filter_warmup_from_dataframe(run_log_stats_df)
 
     report_path = out_dir / "ExperimentReport.md"
     image_files = sorted([p.name for p in out_dir.iterdir() if p.suffix.lower() in {".png", ".svg"}])
@@ -26,13 +67,13 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
 
     lines.append("## Dataset Overview")
     lines.append("")
-    lines.append(f"- Total rows: {len(run_log_stats_df)}")
-    if "Algorithm" in run_log_stats_df.columns:
-        lines.append(f"- Algorithms: {', '.join(sorted(run_log_stats_df['Algorithm'].dropna().astype(str).unique().tolist()))}")
-    if "VariParam" in run_log_stats_df.columns:
-        lines.append(f"- VariParams: {', '.join(sorted(run_log_stats_df['VariParam'].dropna().astype(str).unique().tolist()))}")
-    if "ScenarioCase" in run_log_stats_df.columns:
-        cases = sorted([x for x in run_log_stats_df['ScenarioCase'].dropna().astype(str).unique().tolist() if x])
+    lines.append(f"- Total rows: {len(data_for_report)}")
+    if "Algorithm" in data_for_report.columns:
+        lines.append(f"- Algorithms: {', '.join(sorted(data_for_report['Algorithm'].dropna().astype(str).unique().tolist()))}")
+    if "VariParam" in data_for_report.columns:
+        lines.append(f"- VariParams: {', '.join(sorted(data_for_report['VariParam'].dropna().astype(str).unique().tolist()))}")
+    if "ScenarioCase" in data_for_report.columns:
+        cases = sorted([x for x in data_for_report['ScenarioCase'].dropna().astype(str).unique().tolist() if x])
         if cases:
             lines.append(f"- ScenarioCases: {', '.join(cases)}")
     lines.append("")
@@ -52,11 +93,11 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
             "ConnectionPercent",
             "IterationTime",
         ]
-        if c in run_log_stats_df.columns
+        if c in data_for_report.columns
     ]
     if len(cols) >= 3:
         grouped = (
-            run_log_stats_df[cols]
+            data_for_report[cols]
             .groupby([c for c in ["Algorithm", "VariParam"] if c in cols], dropna=False)
             .mean(numeric_only=True)
             .reset_index()
@@ -77,7 +118,7 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
         lines.append("Insufficient columns to generate grouped metric table.")
     lines.append("")
 
-    if "ScenarioCase" in run_log_stats_df.columns:
+    if "ScenarioCase" in data_for_report.columns:
         case_cols = [
             c
             for c in [
@@ -91,13 +132,13 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
                 "ConnectionPercent",
                 "IterationTime",
             ]
-            if c in run_log_stats_df.columns
+            if c in data_for_report.columns
         ]
         if len(case_cols) >= 3:
             lines.append("## Key Metrics (mean by ScenarioCase x Algorithm)")
             lines.append("")
             grouped_case = (
-                run_log_stats_df[case_cols]
+                data_for_report[case_cols]
                 .groupby([c for c in ["ScenarioCase", "Algorithm"] if c in case_cols], dropna=False)
                 .mean(numeric_only=True)
                 .reset_index()

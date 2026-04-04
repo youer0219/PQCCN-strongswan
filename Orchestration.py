@@ -31,6 +31,12 @@ def main():
         default=1,
         help="DataCollectCore print level",
     )
+    parser.add_argument(
+        "--include-warmup",
+        action="store_true",
+        default=False,
+        help="Include warmup data in plots and reports (default: exclude warmup data)",
+    )
     args = parser.parse_args()
 
     log_dir = str(Path(args.log_dir))
@@ -51,7 +57,7 @@ def main():
     run_log_stats_df = ProcessStats.MarkLogs(run_log_stats_df, args.print_level)
     run_log_stats_df.to_csv(data_file, index=False)
 
-    plot_audit_df = Plotting.PlotVariParam(run_log_stats_df, log_dir, args.print_level)
+    plot_audit_df = Plotting.PlotVariParam(run_log_stats_df, log_dir, args.print_level, include_warmup=args.include_warmup)
     if plot_audit_df is not None and len(plot_audit_df) > 0:
         plot_audit_df.to_csv(str(Path(log_dir) / "PlotAudit.csv"), index=False)
 
@@ -80,7 +86,7 @@ def main():
         summary_df = run_log_stats_df[summary_cols].copy()
         summary_df.to_csv(summary_file, index=False)
 
-    report_path = generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df)
+    report_path = generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df, include_warmup=args.include_warmup)
 
     print(f"Orchestration complete. Output directory: {log_dir}")
     print(f"Experiment report: {report_path}")

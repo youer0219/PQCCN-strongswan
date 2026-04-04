@@ -240,16 +240,31 @@ def generate_packet_bytes_from_dataframe(
     *,
     filename: str = "packet_bytes.svg",
 ) -> Optional[Dict[str, object]]:
-    """Create packet_bytes.svg if frame and payload byte columns are present."""
+    """Create packet_bytes.svg if frame and payload byte columns are present.
+    
+    Filters out warmup data before processing.
+    """
     if run_log_stats_df is None or run_log_stats_df.empty:
         return None
 
-    frame_col = _pick_column(run_log_stats_df, FRAME_CANDIDATES)
-    payload_col = _pick_column(run_log_stats_df, PAYLOAD_CANDIDATES)
+    # Filter out warmup data
+    df = run_log_stats_df.copy()
+    if 'IsWarmup' in df.columns:
+        warmup_mask = df['IsWarmup'].fillna('0').astype(str).str.strip().str.lower().isin({'1', 'true', 'yes'})
+        df = df.loc[~warmup_mask].copy()
+    
+    if 'ScenarioCase' in df.columns:
+        scenario_mask = df['ScenarioCase'].fillna('').astype(str).str.lower().str.contains('warmup', regex=False)
+        df = df.loc[~scenario_mask].copy()
+
+    if df.empty:
+        return None
+
+    frame_col = _pick_column(df, FRAME_CANDIDATES)
+    payload_col = _pick_column(df, PAYLOAD_CANDIDATES)
     if not frame_col or not payload_col:
         return None
 
-    df = run_log_stats_df.copy()
     baseline_mask = _baseline_mask(df)
     baseline_df = df[baseline_mask]
     pqc_df = df[~baseline_mask]

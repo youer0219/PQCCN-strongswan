@@ -51,11 +51,21 @@ def _prepare_base_table(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
 
-    algo_col = _find_col(df, "Algorithm", "Algorithm")
-    scen_col = _find_col(df, "ScenarioCase", "VariParam")
+    # Filter out warmup data
+    work = df.copy()
+    if 'IsWarmup' in work.columns:
+        warmup_mask = work['IsWarmup'].fillna('0').astype(str).str.strip().str.lower().isin({'1', 'true', 'yes'})
+        work = work.loc[~warmup_mask].copy()
+    
+    if 'ScenarioCase' in work.columns:
+        scenario_mask = work['ScenarioCase'].fillna('').astype(str).str.lower().str.contains('warmup', regex=False)
+        work = work.loc[~scenario_mask].copy()
+
+    algo_col = _find_col(work, "Algorithm", "Algorithm")
+    scen_col = _find_col(work, "ScenarioCase", "VariParam")
 
     required = [algo_col, scen_col, *METRICS]
-    work = df[[c for c in required if c in df.columns]].copy()
+    work = work[[c for c in required if c in work.columns]].copy()
     work = work.rename(columns={algo_col: "Algorithm", scen_col: "ScenarioCase"})
     work["Algorithm"] = work["Algorithm"].fillna("").astype(str).str.strip()
     work["ScenarioCase"] = work["ScenarioCase"].fillna("").astype(str).str.strip().str.lower()
