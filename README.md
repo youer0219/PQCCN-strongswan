@@ -16,11 +16,14 @@
 
 ```bash
 bash ./scripts/install_python_deps.sh
+. ./.venv/bin/activate
 ```
 
 快速验证：
 
 ```bash
+python -m pytest -q
+bash ./scripts/setup_docker_test_env.sh
 bash ./scripts/run_performance_test.sh quick
 ```
 
@@ -30,10 +33,12 @@ bash ./scripts/run_performance_test.sh quick
 bash ./scripts/run_performance_test.sh large
 ```
 
+首次联调建议先完成上面的 `pytest + setup_docker_test_env + quick` 链路，再运行 `large`。
+
 自定义配置集运行：
 
 ```bash
-python3 -m pqccn_strongswan \
+python -m pqccn_strongswan \
   ./results/custom_run \
   "./configs/experiments/presets/composite_ideal.yaml,./configs/experiments/presets/composite_wan.yaml"
 ```

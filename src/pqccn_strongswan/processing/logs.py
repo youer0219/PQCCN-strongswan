@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import yaml
 import pandas as pd
-import tkinter as tk
-from tkinter import filedialog
 from pathlib import Path
 from IPython.display import display
 
@@ -16,6 +14,12 @@ def Log_stats(log_dir, plvl):
     print("Starting Log_stats")
 
     if log_dir == "":
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+        except ModuleNotFoundError as exc:
+            raise RuntimeError("tkinter is required only when log_dir is empty and a directory picker is needed") from exc
+
         root = tk.Tk()
         root.withdraw()
 

@@ -7,6 +7,8 @@
 用于快速检查环境、容器和最小配置链路：
 
 ```bash
+python -m pytest -q
+bash ./scripts/setup_docker_test_env.sh
 bash ./scripts/run_performance_test.sh quick
 ```
 
@@ -72,6 +74,7 @@ bash ./scripts/run_performance_test.sh large \
 ## 推荐验证命令
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 -m py_compile src/pqccn_strongswan/cli/orchestrator.py src/pqccn_strongswan/cli/matrix.py
+python -m pytest -q
+python -m pqccn_strongswan --help
+python -m pqccn_strongswan.cli.matrix --help
 ```

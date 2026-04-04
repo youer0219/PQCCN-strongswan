@@ -11,12 +11,14 @@
 
 ```bash
 bash ./scripts/install_python_deps.sh
+. ./.venv/bin/activate
 ```
 
 该脚本会执行：
 
 ```bash
-python3 -m pip install -e .
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
 ```
 
 ## 最常用命令
@@ -24,6 +26,8 @@ python3 -m pip install -e .
 快速验证：
 
 ```bash
+python -m pytest -q
+bash ./scripts/setup_docker_test_env.sh
 bash ./scripts/run_performance_test.sh quick
 ```
 
@@ -36,7 +40,7 @@ bash ./scripts/run_performance_test.sh large
 直接调用主编排入口：
 
 ```bash
-python3 -m pqccn_strongswan \
+python -m pqccn_strongswan \
   ./results/manual_run \
   ./configs/experiments/presets/composite_ideal.yaml
 ```
@@ -44,7 +48,7 @@ python3 -m pqccn_strongswan \
 一次运行多个配置：
 
 ```bash
-python3 -m pqccn_strongswan \
+python -m pqccn_strongswan \
   ./results/custom_run \
   "./configs/experiments/presets/composite_ideal.yaml,./configs/experiments/presets/composite_wan.yaml"
 ```
@@ -62,6 +66,7 @@ python3 -m pqccn_strongswan \
 ## 当前入口
 
 推荐入口：
-- `python3 -m pqccn_strongswan`
+- `python -m pqccn_strongswan`
+- `python -m pytest -q`
 - `pqccn-matrix`
 - `src/pqccn_strongswan/` 下的包模块
