@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
 
 DEFAULT_COMPOSITE_CASES="ideal:0:0:0;metro:12:2:0.1;wan:68:12:0.6;lossy:135:22:2.0"
 
@@ -40,8 +41,8 @@ ensure_images() {
   python3 - <<PY
 from pathlib import Path
 import pandas as pd
-from summarize_matrix_results import generate_matrix_svgs
-from summarize_results import generate_packet_bytes_from_dataframe
+from pqccn_strongswan.analysis.summarize_matrix_results import generate_matrix_svgs
+from pqccn_strongswan.analysis.summarize_results import generate_packet_bytes_from_dataframe
 
 out_dir = Path(${result_dir@Q})
 df = pd.read_csv(out_dir / "RunLogStatsDF.csv")
@@ -103,7 +104,7 @@ run_quick() {
   local start end elapsed
   start=$(date +%s)
   bash "${ROOT_DIR}/scripts/setup_docker_test_env.sh" >/dev/null 2>&1 || true
-  python3 "${ROOT_DIR}/Orchestration.py" "${result_dir}" "${config_list}" \
+  python3 -m pqccn_strongswan "${result_dir}" "${config_list}" \
     --print-level "${print_level}" --collect-print-level "${collect_level}"
   end=$(date +%s)
   elapsed=$((end - start))

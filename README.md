@@ -1,37 +1,30 @@
 # PQCCN-strongswan
 
-PQCCN-strongswan 是一个基于 strongSwan 容器环境的自动化实验流水线，用于对比经典与后量子 IKEv2 方案在受限网络下的连接性能。
+`PQCCN-strongswan` 是一个基于 strongSwan 容器环境的自动化实验流水线，用于对比经典与后量子 IKEv2 方案在受限网络下的连接性能。
 
-项目主页：<a target="_blank" rel="noreferrer noopener" href="https://jfluhler.github.io/PQCCN-strongswan/">GitHub Pages</a>
-
-## 核心变化（2026-04）
-
-- 全面切换为统一综合网络配置：`Carol_Network_Config` / `Moon_Network_Config`
-- 允许网络字段留空，表示该维度不限制
-- 日志命名绑定“全量网络画像”，不再只绑定 delay
-- 图表 detail 不再硬编码 delay 字段
-- large 模式固定为 3 算法 × 4 网络场景矩阵（串行）
-- 预热嵌入主测试流，按 `IsWarmup=1` 在统计阶段过滤
+仓库现已完成两项整理：
+- Python 代码收敛到标准 `src/` 包布局，主包为 `pqccn_strongswan`
+- 原 `Writerside/` 文档站已移除，长期维护文档统一收敛到 [`docs/`](docs/README.md)
 
 ## 快速开始
 
 前置条件：
 - Docker
-- Python 3
+- Python 3.9+
 
-安装 Python 依赖：
+安装项目与依赖：
 
 ```bash
 bash ./scripts/install_python_deps.sh
 ```
 
-快速验证（约 5-10 分钟）：
+快速验证：
 
 ```bash
 bash ./scripts/run_performance_test.sh quick
 ```
 
-完整测试（默认每点预热 20 次 + 正式 200 次，串行）：
+固定矩阵完整测试：
 
 ```bash
 bash ./scripts/run_performance_test.sh large
@@ -40,91 +33,59 @@ bash ./scripts/run_performance_test.sh large
 自定义配置集运行：
 
 ```bash
-python3 Orchestration.py ./results/custom_run "./data_collection/configs/DataCollect_composite_ideal.yaml,./data_collection/configs/DataCollect_composite_wan.yaml"
+python3 -m pqccn_strongswan \
+  ./results/custom_run \
+  "./data_collection/configs/DataCollect_composite_ideal.yaml,./data_collection/configs/DataCollect_composite_wan.yaml"
 ```
 
-## 固定矩阵默认值
+## 当前项目结构
 
-large 模式固定算法组合：
-- Classic-KEX + Classic-Cert
-- Hybrid(1PQ)-KEX + PQ-Cert
-- Hybrid(2PQ)-KEX + PQ-Cert
+- `src/pqccn_strongswan/`: 主 Python 包与实现代码
+- `scripts/`: 实验执行与环境辅助脚本
+- `data_collection/configs/`: 当前保留的 YAML 配置集
+- `pq-strongswan/`: strongSwan 容器与证书资产
+- `tests/`: 自动化测试
+- `docs/`: 使用说明、配置参考与项目结构文档
 
-large 模式固定网络场景（`rtt/jitter/loss`）：
-- ideal: `0/0/0%`
-- metro: `12/2/0.1%`
-- wan: `45/8/0.3%`
-- lossy: `90/15/1.0%`
+兼容性说明：
+- 根目录的 `Orchestration.py`、`reporting.py`、`summarize_*.py` 以及 `data_*` 目录仍保留为薄兼容层
+- 新增开发应优先使用 `src/pqccn_strongswan/` 下的实现与 `python3 -m pqccn_strongswan`
 
-默认 `rate_kbit=-1`（不限速）。如果要限速，可通过 `--composite-cases` 覆盖并为某场景追加第 5 段 `rate_kbit`。
+## 默认实验矩阵
 
-例如：
+默认算法组合：
+- `Classic-KEX + Classic-Cert`
+- `Hybrid(1PQ)-KEX + PQ-Cert`
+- `Hybrid(2PQ)-KEX + PQ-Cert`
 
-```bash
-bash scripts/run_performance_test.sh large \
-  --composite-cases "ideal:0:0:0;metro:12:2:0.1:5000;wan:68:12:0.6:2000;lossy:135:22:2.0:1200"
-```
+默认网络场景（`rtt/jitter/loss`）：
+- `ideal`: `0/0/0%`
+- `metro`: `12/2/0.1%`
+- `wan`: `68/12/0.6%`
+- `lossy`: `135/22/2.0%`
 
-## 配置模型（统一网络画像）
+默认 `rate_kbit=-1`，表示不限速。可通过 `--composite-cases` 覆盖矩阵场景。
 
-每个网络配置文件使用以下结构：
+## 结果输出
 
-```yaml
-CoreConfig:
-  TC_Iterations: 10
-  MaxTimeS: 36000
-  RemotePath: "/var/log/charon.log"
-  compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"
-  Note: "example"
-
-Carol_Network_Config:
-  Interface: eth0
-  AdjustHost: carol
-  SweepKey: delay_ms
-  SweepValues: [1, 20, 50, 100]
-  Profile:
-    delay_ms: ""
-    jitter_ms: ""
-    loss_pct: ""
-    duplicate_pct: ""
-    corrupt_pct: ""
-    reorder_pct: ""
-    reorder_corr_pct: ""
-    rate_kbit: ""
-```
-
-说明：
-- `Profile` 中字段为空字符串表示该项不限制
-- 通过 `SweepKey` + `SweepValues` 对某一维做 sweep
-- 未设置 `SweepKey` 时按单点静态画像运行
-
-## 输出目录
-
-每次运行会生成一个结果目录，典型文件如下：
-
-- `ExperimentReport.md`：实验摘要
-- `RunLogStatsDF.csv`：全量统计
-- `RunLogStatsDF_summary.csv`：摘要视图
-- `PlotAudit.csv`：图形审计信息
-- `matrix_algo_scenario_p50.svg`：P50 算法×网络热力图
-- `matrix_algo_scenario_p95.svg`：P95 算法×网络热力图
-- `matrix_algo_scenario_p99.svg`：P99 算法×网络热力图
-- `matrix_latency_percentiles.svg`：P50/P95/P99 合并面板图
-- `matrix_overhead_percentiles.svg`：P50/P95/P99 相对 Classic 开销面板图
-- `packet_bytes.svg`：可选报文大小图
-
-## 主要脚本入口
-
-- `scripts/run_performance_test.sh`：quick/large 统一脚本（large 模式可调参数）
-- `scripts/run_experiment_suite.sh`：批量实验入口
-- `scripts/run_crypto_matrix.py`：三种密码学场景矩阵实验
-- `Orchestration.py`：端到端主编排（采集→解析→制表→绘图→报告）
+每次运行通常会生成：
+- `ExperimentReport.md`
+- `RunLogStatsDF.csv`
+- `RunLogStatsDF_summary.csv`
+- `PlotAudit.csv`
+- `matrix_algo_scenario_p50.svg`
+- `matrix_algo_scenario_p95.svg`
+- `matrix_algo_scenario_p99.svg`
+- `matrix_latency_percentiles.svg`
+- `matrix_overhead_percentiles.svg`
+- `packet_bytes.svg`（当数据列存在时）
 
 ## 文档导航
 
-- [PERFORMANCE_TEST_GUIDE.md](PERFORMANCE_TEST_GUIDE.md)
-- [data_collection/CONFIG_REFERENCE.md](data_collection/CONFIG_REFERENCE.md)
-- [data_collection/configs/README.md](data_collection/configs/README.md)
-- [data_collection/README.md](data_collection/README.md)
+- [文档索引](docs/README.md)
+- [快速上手](docs/guides/getting-started.md)
+- [性能测试指南](docs/guides/performance-testing.md)
+- [配置参考](docs/reference/configuration.md)
+- [项目结构说明](docs/reference/project-structure.md)
 
 License: <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>

@@ -29,7 +29,7 @@ KEEP_CONFIGS=(
   "DataCollect_composite_ideal.yaml"
   "DataCollect_composite_metro.yaml"
   "DataCollect_composite_wan.yaml"
-  "DataCollect_composite_harsh.yaml"
+  "DataCollect_composite_lossy.yaml"
   "DataCollect_quick_classic_ideal.yaml"
   "DataCollect_quick_hybrid_ideal.yaml"
 )

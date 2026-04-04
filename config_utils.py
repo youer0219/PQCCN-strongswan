@@ -1,30 +1,19 @@
-from glob import glob
+"""Backward-compatible import shim."""
+
+from importlib import import_module
 from pathlib import Path
+import sys
 
 
-def resolve_config_files(config_arg: str):
-    """Resolve config input into a sorted list of YAML files."""
-    path = Path(config_arg)
+SRC_DIR = Path(__file__).resolve().parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
-    if path.is_file():
-        return [str(path)]
-
-    if path.is_dir():
-        return sorted(str(x) for x in path.glob("*.yaml"))
-
-    # Support shell-like patterns and comma-separated paths.
-    resolved = []
-    for token in [x.strip() for x in config_arg.split(",") if x.strip()]:
-        matches = glob(token)
-        if matches:
-            resolved.extend(matches)
-        elif token.endswith(".yaml") or token.endswith(".yml"):
-            resolved.append(token)
-
-    seen = set()
-    out = []
-    for f in resolved:
-        if f not in seen:
-            seen.add(f)
-            out.append(f)
-    return out
+_MODULE = import_module("pqccn_strongswan.config_utils")
+globals().update(
+    {
+        name: getattr(_MODULE, name)
+        for name in dir(_MODULE)
+        if not (name.startswith("__") and name.endswith("__"))
+    }
+)

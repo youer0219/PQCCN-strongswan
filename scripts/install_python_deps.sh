@@ -2,9 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REQ_FILE="$ROOT_DIR/requirements.txt"
 
 python3 -m pip install --upgrade pip
-python3 -m pip install -r "$REQ_FILE"
+python3 -m pip install -e "$ROOT_DIR"
 
-echo "Python dependencies installed."
+echo "Python package and dependencies installed in editable mode."

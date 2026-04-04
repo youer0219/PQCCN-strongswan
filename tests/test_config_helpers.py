@@ -2,7 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 import importlib.util
-import pandas as pd
+
+HAS_PANDAS = importlib.util.find_spec("pandas") is not None
+if HAS_PANDAS:
+    import pandas as pd
 
 from config_utils import resolve_config_files
 
@@ -110,7 +113,7 @@ class TestConfigHelpers(unittest.TestCase):
         self.assertEqual(path, "/tmp/charon.log")
         self.assertEqual(fields.get("IsWarmup"), "1")
 
-    @unittest.skipUnless(HAS_MATRIX_PLOT, "matrix plotting dependencies are required")
+    @unittest.skipUnless(HAS_MATRIX_PLOT and HAS_PANDAS, "matrix plotting dependencies are required")
     def test_generate_matrix_svgs_outputs_percentile_heatmaps(self):
         with tempfile.TemporaryDirectory() as td:
             out_dir = Path(td)

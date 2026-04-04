@@ -12,6 +12,7 @@ Warmup samples are explicitly marked and excluded in later statistics.
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import subprocess
 import time
@@ -215,7 +216,8 @@ def main() -> int:
     config_arg = ",".join(str(p) for p in generated)
     orch_cmd = [
         "python3",
-        "Orchestration.py",
+        "-m",
+        "pqccn_strongswan",
         str(result_dir),
         config_arg,
         "--print-level",
@@ -249,8 +251,10 @@ def main() -> int:
 
     start = time.perf_counter()
     print("[Matrix] Running orchestration...")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(repo_root / "src") + (f":{env['PYTHONPATH']}" if env.get("PYTHONPATH") else "")
     try:
-        subprocess.run(orch_cmd, check=True, cwd=repo_root)
+        subprocess.run(orch_cmd, check=True, cwd=repo_root, env=env)
     except subprocess.CalledProcessError as exc:
         print(f"[Matrix] FAILED with exit code: {exc.returncode}")
         print("[Matrix] Tip: run from repo root and keep the command on one line or use '\\' line continuations.")
