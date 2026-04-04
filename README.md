@@ -62,7 +62,7 @@ large 模式固定网络场景（`rtt/jitter/loss`）：
 
 ```bash
 bash scripts/run_performance_test.sh large \
-  --composite-cases "ideal:0:0:0;metro:12:2:0.1:5000;wan:45:8:0.3:2000;lossy:90:15:1.0:1200"
+  --composite-cases "ideal:0:0:0;metro:12:2:0.1:5000;wan:68:12:0.6:2000;lossy:135:22:2.0:1200"
 ```
 
 ## 配置模型（统一网络画像）

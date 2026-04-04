@@ -24,8 +24,8 @@ import yaml
 DEFAULT_NETWORK_CASES = [
     {"name": "ideal", "rtt_ms": 0.0, "jitter_ms": 0.0, "loss_pct": 0.0, "rate_kbit": -1.0},
     {"name": "metro", "rtt_ms": 12.0, "jitter_ms": 2.0, "loss_pct": 0.1, "rate_kbit": -1.0},
-    {"name": "wan", "rtt_ms": 45.0, "jitter_ms": 8.0, "loss_pct": 0.3, "rate_kbit": -1.0},
-    {"name": "lossy", "rtt_ms": 90.0, "jitter_ms": 15.0, "loss_pct": 1.0, "rate_kbit": -1.0},
+    {"name": "wan", "rtt_ms": 68.0, "jitter_ms": 12.0, "loss_pct": 0.6, "rate_kbit": -1.0},
+    {"name": "lossy", "rtt_ms": 135.0, "jitter_ms": 22.0, "loss_pct": 2.0, "rate_kbit": -1.0},
 ]
 
 

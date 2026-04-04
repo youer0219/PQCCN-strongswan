@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-DEFAULT_COMPOSITE_CASES="ideal:0:0:0;metro:12:2:0.1;wan:45:8:0.3;lossy:90:15:1.0"
+DEFAULT_COMPOSITE_CASES="ideal:0:0:0;metro:12:2:0.1;wan:68:12:0.6;lossy:135:22:2.0"
 
 QUICK_CONFIGS=(
   "${ROOT_DIR}/data_collection/configs/DataCollect_quick_classic_ideal.yaml"
@@ -221,7 +221,7 @@ quick options:
 
 large options:
   --result-dir <dir>
-  --composite-cases "ideal:0:0:0;metro:12:2:0.1;wan:45:8:0.3;lossy:90:15:1.0[:rate_kbit]"
+  --composite-cases "ideal:0:0:0;metro:12:2:0.1;wan:68:12:0.6;lossy:135:22:2.0[:rate_kbit]"
   --iterations <n>
   --warmup-iters <n>
   --max-time-s <sec>

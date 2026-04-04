@@ -43,7 +43,7 @@ bash ./scripts/run_performance_test.sh large
 ```bash
 bash ./scripts/run_performance_test.sh large \
   --result-dir ./results/perf_large_$(date +%Y%m%d_%H%M) \
-  --composite-cases "ideal:0:0:0;metro:12:2:0.1;wan:45:8:0.3;lossy:90:15:1.0" \
+  --composite-cases "ideal:0:0:0;metro:12:2:0.1;wan:68:12:0.6;lossy:135:22:2.0" \
   --iterations 200 \
   --warmup-iters 20 \
   --max-time-s 7200

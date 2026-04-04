@@ -115,8 +115,8 @@ Algorithms:
 Network scenarios:
 - ideal: rtt=0ms, jitter=0ms, loss=0%, rate_kbit=-1
 - metro: rtt=12ms, jitter=2ms, loss=0.1%, rate_kbit=-1
-- wan: rtt=45ms, jitter=8ms, loss=0.3%, rate_kbit=-1
-- lossy: rtt=90ms, jitter=15ms, loss=1.0%, rate_kbit=-1
+- wan: rtt=68ms, jitter=12ms, loss=0.6%, rate_kbit=-1
+- lossy: rtt=135ms, jitter=22ms, loss=2.0%, rate_kbit=-1
 
 Default sampling counts:
 - WarmupIterations: 20

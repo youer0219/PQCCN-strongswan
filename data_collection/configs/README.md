@@ -41,7 +41,7 @@ bash ./scripts/run_performance_test.sh quick
 Unified large-scale run (parameterized):
 
 ```bash
-bash ./scripts/run_performance_test.sh large --composite-cases "ideal:0:0:4000;metro:20:0.1:3200;wan:60:0.5:2200;harsh:120:2.0:1200" --iterations 8
+bash ./scripts/run_performance_test.sh large --composite-cases "ideal:0:0:0;metro:12:2:0.1;wan:68:12:0.6;lossy:135:22:2.0" --iterations 200
 ```
 
 Run explicit active profile list:

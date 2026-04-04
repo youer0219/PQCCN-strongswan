@@ -10,13 +10,13 @@ CoreConfig:
   compose_files: "./pq-strongswan/hybrid2pq-docker-compose.yml"
   Note: "network_profile__composite__metro"
 
-# RTT=20ms -> delay_ms=10ms, loss=0.1%
+# RTT=12ms -> delay_ms=6ms, jitter=2ms, loss=0.1%
 Carol_Network_Config:
   Interface: eth0
   AdjustHost: carol
   Profile:
-    delay_ms: 10
-    jitter_ms: ""
+    delay_ms: 6
+    jitter_ms: 2
     loss_pct: 0.1
     duplicate_pct: ""
     corrupt_pct: ""
