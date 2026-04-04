@@ -73,11 +73,16 @@ pqccn-matrix --result-dir ./results/crypto_matrix
 - `Hybrid(1PQ)-KEX + PQ-Cert`
 - `Hybrid(2PQ)-KEX + PQ-Cert`
 
-默认网络场景（`rtt/jitter/loss`）：
-- `ideal`: `0/0/0%`
-- `metro`: `12/2/0.1%`
-- `wan`: `68/12/0.6%`
-- `lossy`: `135/22/2.0%`
+默认网络场景（`rtt/one-way delay/jitter/loss`）：
+- `ideal`: `0/0/0/0%`
+- `metro`: `15/7.5/1.875/0.05%`
+- `wan`: `105/52.5/13.125/0.3%`
+- `lossy`: `230/115/28.75/1.0%`
+
+其中：
+- `delay_ms = RTT / 2`
+- `jitter_ms = RTT / 8`（即单向时延的四分之一）
+- `loss_pct` 为双向丢包率，会同时配置到 `Carol` 和 `Moon`
 
 默认 `rate_kbit=-1`，表示不限速。可通过 `--composite-cases` 覆盖矩阵场景。
 
@@ -89,8 +94,9 @@ pqccn-matrix --result-dir ./results/crypto_matrix
 - `RunLogStatsDF_summary.csv`
 - `PlotAudit.csv`
 - `matrix_algo_scenario_p50.svg`
+- `matrix_algo_scenario_p75.svg`
+- `matrix_algo_scenario_p90.svg`
 - `matrix_algo_scenario_p95.svg`
-- `matrix_algo_scenario_p99.svg`
 - `matrix_latency_percentiles.svg`
 - `matrix_overhead_percentiles.svg`
 - `packet_bytes.svg`（当数据列存在时）

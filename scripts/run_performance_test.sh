@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
 
-DEFAULT_COMPOSITE_CASES="ideal:0:0:0;metro:12:2:0.1;wan:68:12:0.6;lossy:135:22:2.0"
+DEFAULT_COMPOSITE_CASES="ideal:0:0;metro:15:0.05;wan:105:0.3;lossy:230:1.0"
 
 QUICK_CONFIGS=(
   "${ROOT_DIR}/configs/experiments/presets/quick_classic_ideal.yaml"
@@ -24,10 +24,11 @@ format_hms() {
 ensure_images() {
   local result_dir="$1"
   local p50_svg="${result_dir}/matrix_algo_scenario_p50.svg"
+  local p75_svg="${result_dir}/matrix_algo_scenario_p75.svg"
+  local p90_svg="${result_dir}/matrix_algo_scenario_p90.svg"
   local p95_svg="${result_dir}/matrix_algo_scenario_p95.svg"
-  local p99_svg="${result_dir}/matrix_algo_scenario_p99.svg"
 
-  if [[ -f "${p50_svg}" && -f "${p95_svg}" && -f "${p99_svg}" ]]; then
+  if [[ -f "${p50_svg}" && -f "${p75_svg}" && -f "${p90_svg}" && -f "${p95_svg}" ]]; then
     echo "[Images] Matrix percentile SVGs already generated."
     return 0
   fi
@@ -50,7 +51,7 @@ generate_matrix_svgs(df, out_dir)
 generate_packet_bytes_from_dataframe(df, out_dir)
 PY
 
-  if [[ -f "${p50_svg}" && -f "${p95_svg}" && -f "${p99_svg}" ]]; then
+  if [[ -f "${p50_svg}" && -f "${p75_svg}" && -f "${p90_svg}" && -f "${p95_svg}" ]]; then
     echo "[Images] Matrix percentile SVGs generated successfully."
     return 0
   fi
@@ -222,7 +223,7 @@ quick options:
 
 large options:
   --result-dir <dir>
-  --composite-cases "ideal:0:0:0;metro:12:2:0.1;wan:68:12:0.6;lossy:135:22:2.0[:rate_kbit]"
+  --composite-cases "ideal:0:0;metro:15:0.05;wan:105:0.3;lossy:230:1.0[:rate_kbit]"
   --iterations <n>
   --warmup-iters <n>
   --max-time-s <sec>
@@ -231,8 +232,10 @@ large options:
   --dry-run
 
 Notes:
-  - Composite case format is name:rtt_ms:jitter_ms:loss_pct[:rate_kbit]
+  - Composite case format is name:rtt_ms:loss_pct[:rate_kbit]
   - RTT is automatically converted to one-way delay for netem
+  - Jitter is derived as one-way delay / 4 (that is, RTT / 8)
+  - Loss is applied symmetrically on both Carol and Moon
   - Omitted rate_kbit means unlimited bandwidth (internally -1)
   - Script checks/repairs SVG generation after non-dry-run execution
 USAGE

@@ -23,15 +23,15 @@ import yaml
 
 
 DEFAULT_NETWORK_CASES = [
-    {"name": "ideal", "rtt_ms": 0.0, "jitter_ms": 0.0, "loss_pct": 0.0, "rate_kbit": -1.0},
-    {"name": "metro", "rtt_ms": 12.0, "jitter_ms": 2.0, "loss_pct": 0.1, "rate_kbit": -1.0},
-    {"name": "wan", "rtt_ms": 68.0, "jitter_ms": 12.0, "loss_pct": 0.6, "rate_kbit": -1.0},
-    {"name": "lossy", "rtt_ms": 135.0, "jitter_ms": 22.0, "loss_pct": 2.0, "rate_kbit": -1.0},
+    {"name": "ideal", "rtt_ms": 0.0, "loss_pct": 0.0, "rate_kbit": -1.0},
+    {"name": "metro", "rtt_ms": 15.0, "loss_pct": 0.05, "rate_kbit": -1.0},
+    {"name": "wan", "rtt_ms": 105.0, "loss_pct": 0.3, "rate_kbit": -1.0},
+    {"name": "lossy", "rtt_ms": 230.0, "loss_pct": 1.0, "rate_kbit": -1.0},
 ]
 
 
 def _parse_composite_cases(raw: str):
-    """Parse composite cases: name:rtt_ms:jitter_ms:loss_pct[:rate_kbit];..."""
+    """Parse composite cases: name:rtt_ms:loss_pct[:rate_kbit];..."""
     cases = []
     if not raw:
         return cases
@@ -40,17 +40,16 @@ def _parse_composite_cases(raw: str):
         if not chunk:
             continue
         parts = [x.strip() for x in chunk.split(":")]
-        if len(parts) not in {4, 5}:
+        if len(parts) not in {3, 4}:
             raise ValueError(
-                "Invalid case format. Expected name:rtt_ms:jitter_ms:loss_pct[:rate_kbit]"
+                "Invalid case format. Expected name:rtt_ms:loss_pct[:rate_kbit]"
             )
-        name, rtt_ms, jitter_ms, loss_pct = parts[:4]
-        rate_kbit = parts[4] if len(parts) == 5 else "-1"
+        name, rtt_ms, loss_pct = parts[:3]
+        rate_kbit = parts[3] if len(parts) == 4 else "-1"
         cases.append(
             {
                 "name": name,
                 "rtt_ms": float(rtt_ms),
-                "jitter_ms": float(jitter_ms),
                 "loss_pct": float(loss_pct),
                 "rate_kbit": float(rate_kbit),
             }
@@ -107,7 +106,7 @@ def _set_profile_value(profile_map: Dict[str, str], key: str, value: float):
 
 def _build_network_config(composite_case: Dict) -> Dict:
     delay_ms = round(float(composite_case["rtt_ms"]) / 2.0, 4)
-    jitter_case = max(0.0, float(composite_case.get("jitter_ms", 0.0)))
+    jitter_case = round(delay_ms / 4.0, 4)
     loss_case = max(0.0, float(composite_case["loss_pct"]))
     rate_raw = float(composite_case.get("rate_kbit", -1.0))
 
@@ -156,7 +155,7 @@ def main() -> int:
     parser.add_argument(
         "--composite-cases",
         default="",
-        help="Override default cases with: name:rtt_ms:jitter_ms:loss_pct[:rate_kbit];...",
+        help="Override default cases with: name:rtt_ms:loss_pct[:rate_kbit];...",
     )
     parser.add_argument("--show-configs", action="store_true", help="Print all generated config paths")
     parser.add_argument("--dry-run", action="store_true", help="Generate configs and print command only")

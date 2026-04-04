@@ -67,8 +67,9 @@ def main() -> int:
             "mean",
             "median",
             "p50",
+            "p75",
+            "p90",
             "p95",
-            "p99",
             "ConnectionPercent",
             "IterationTime",
         ]

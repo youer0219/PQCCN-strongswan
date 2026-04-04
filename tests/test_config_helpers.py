@@ -34,11 +34,23 @@ try:
 except Exception:  # noqa: BLE001
     HAS_LOG_PARSER = False
 
+HAS_LOG_STATS = True
+try:
+    from pqccn_strongswan.processing.log_conversion import Get_Ike_State_Stats
+except Exception:  # noqa: BLE001
+    HAS_LOG_STATS = False
+
 HAS_MATRIX_PLOT = True
 try:
     from pqccn_strongswan.reporting.matrix_svg import generate_matrix_svgs
 except Exception:  # noqa: BLE001
     HAS_MATRIX_PLOT = False
+
+HAS_MATRIX_CLI = True
+try:
+    from pqccn_strongswan.cli.matrix import _parse_composite_cases
+except Exception:  # noqa: BLE001
+    HAS_MATRIX_CLI = False
 
 
 class TestConfigHelpers(unittest.TestCase):
@@ -151,22 +163,53 @@ class TestConfigHelpers(unittest.TestCase):
         self.assertEqual(path, "/tmp/charon.log")
         self.assertEqual(fields.get("IsWarmup"), "1")
 
+    @unittest.skipUnless(HAS_LOG_STATS and HAS_PANDAS, "log stats dependencies are required")
+    def test_get_ike_state_stats_reports_new_percentiles_without_p99(self):
+        df = pd.DataFrame(
+            [
+                {"Time": 0.0, "NewState": "CONNECTING"},
+                {"Time": 1.0, "NewState": "ESTABLISHED"},
+                {"Time": 2.0, "NewState": "CONNECTING"},
+                {"Time": 4.0, "NewState": "ESTABLISHED"},
+                {"Time": 6.0, "NewState": "CONNECTING"},
+                {"Time": 9.0, "NewState": "ESTABLISHED"},
+                {"Time": 12.0, "NewState": "CONNECTING"},
+                {"Time": 16.0, "NewState": "ESTABLISHED"},
+            ]
+        )
+
+        stats = Get_Ike_State_Stats(df)
+
+        self.assertAlmostEqual(stats["p50"], 2.5)
+        self.assertAlmostEqual(stats["p75"], 3.25)
+        self.assertAlmostEqual(stats["p90"], 3.7)
+        self.assertAlmostEqual(stats["p95"], 3.85)
+        self.assertNotIn("p99", stats)
+
     @unittest.skipUnless(HAS_MATRIX_PLOT and HAS_PANDAS, "matrix plotting dependencies are required")
     def test_generate_matrix_svgs_outputs_percentile_heatmaps(self):
         with tempfile.TemporaryDirectory() as td:
             out_dir = Path(td)
             df = pd.DataFrame(
                 [
-                    {"Algorithm": "Classic-KEX + Classic-Cert", "ScenarioCase": "ideal", "p50": 0.01, "p95": 0.02, "p99": 0.03},
-                    {"Algorithm": "Hybrid(1PQ)-KEX + PQ-Cert", "ScenarioCase": "ideal", "p50": 0.02, "p95": 0.03, "p99": 0.04},
-                    {"Algorithm": "Hybrid(2PQ)-KEX + PQ-Cert", "ScenarioCase": "ideal", "p50": 0.03, "p95": 0.04, "p99": 0.05},
+                    {"Algorithm": "Classic-KEX + Classic-Cert", "ScenarioCase": "ideal", "p50": 0.01, "p75": 0.015, "p90": 0.018, "p95": 0.02},
+                    {"Algorithm": "Hybrid(1PQ)-KEX + PQ-Cert", "ScenarioCase": "ideal", "p50": 0.02, "p75": 0.025, "p90": 0.028, "p95": 0.03},
+                    {"Algorithm": "Hybrid(2PQ)-KEX + PQ-Cert", "ScenarioCase": "ideal", "p50": 0.03, "p75": 0.035, "p90": 0.038, "p95": 0.04},
                 ]
             )
             audit = generate_matrix_svgs(df, out_dir)
             self.assertFalse(audit.empty)
             self.assertTrue((out_dir / "matrix_algo_scenario_p50.svg").exists())
+            self.assertTrue((out_dir / "matrix_algo_scenario_p75.svg").exists())
+            self.assertTrue((out_dir / "matrix_algo_scenario_p90.svg").exists())
             self.assertTrue((out_dir / "matrix_algo_scenario_p95.svg").exists())
-            self.assertTrue((out_dir / "matrix_algo_scenario_p99.svg").exists())
+            self.assertTrue((out_dir / "matrix_latency_percentiles.svg").exists())
+            self.assertTrue((out_dir / "matrix_overhead_percentiles.svg").exists())
+
+    @unittest.skipUnless(HAS_MATRIX_CLI, "matrix cli dependencies are required")
+    def test_parse_composite_cases_rejects_legacy_jitter_format(self):
+        with self.assertRaises(ValueError):
+            _parse_composite_cases("metro:15:1.875:0.05:1200")
 
     def test_python_module_help_smoke(self):
         env = dict(os.environ)
@@ -219,7 +262,7 @@ class TestConfigHelpers(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, msg=proc.stderr)
 
-            cfg_path = result_dir / "generated_configs" / "composite_classic_classic_ideal.yaml"
+            cfg_path = result_dir / "generated_configs" / "composite_classic_classic_metro.yaml"
             self.assertTrue(cfg_path.exists())
 
             data = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
@@ -229,6 +272,9 @@ class TestConfigHelpers(unittest.TestCase):
                 data["Carol_Network_Config"]["Profile"],
                 data["Moon_Network_Config"]["Profile"],
             )
+            self.assertEqual(data["Carol_Network_Config"]["Profile"]["delay_ms"], "7.5")
+            self.assertEqual(data["Carol_Network_Config"]["Profile"]["jitter_ms"], "1.875")
+            self.assertEqual(data["Carol_Network_Config"]["Profile"]["loss_pct"], "0.05")
 
 
 if __name__ == "__main__":

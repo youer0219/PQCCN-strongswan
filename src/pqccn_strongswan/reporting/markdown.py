@@ -60,8 +60,9 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
             "mean",
             "median",
             "p50",
+            "p75",
+            "p90",
             "p95",
-            "p99",
             "ConnectionPercent",
             "IterationTime",
         ]
@@ -74,8 +75,8 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
             .mean(numeric_only=True)
             .reset_index()
         )
-        lines.append("| Algorithm | VariParam | mean | median | p50 | p95 | p99 | ConnectionPercent | IterationTime |")
-        lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+        lines.append("| Algorithm | VariParam | mean | median | p50 | p75 | p90 | p95 | ConnectionPercent | IterationTime |")
+        lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
         for _, r in grouped.iterrows():
             cp = _fmt_num(r.get("ConnectionPercent", ""))
             if cp != "":
@@ -84,7 +85,7 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
                 except Exception:  # noqa: BLE001
                     pass
             lines.append(
-                f"| {r.get('Algorithm', '')} | {r.get('VariParam', '')} | {_fmt_num(r.get('mean', ''))} | {_fmt_num(r.get('median', ''))} | {_fmt_num(r.get('p50', ''))} | {_fmt_num(r.get('p95', ''))} | {_fmt_num(r.get('p99', ''))} | {cp} | {_fmt_num(r.get('IterationTime', ''))} |"
+                f"| {r.get('Algorithm', '')} | {r.get('VariParam', '')} | {_fmt_num(r.get('mean', ''))} | {_fmt_num(r.get('median', ''))} | {_fmt_num(r.get('p50', ''))} | {_fmt_num(r.get('p75', ''))} | {_fmt_num(r.get('p90', ''))} | {_fmt_num(r.get('p95', ''))} | {cp} | {_fmt_num(r.get('IterationTime', ''))} |"
             )
     else:
         lines.append("Insufficient columns to generate grouped metric table.")
@@ -99,8 +100,9 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
                 "mean",
                 "median",
                 "p50",
+                "p75",
+                "p90",
                 "p95",
-                "p99",
                 "ConnectionPercent",
                 "IterationTime",
             ]
@@ -115,8 +117,8 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
                 .mean(numeric_only=True)
                 .reset_index()
             )
-            lines.append("| ScenarioCase | Algorithm | mean | median | p50 | p95 | p99 | ConnectionPercent | IterationTime |")
-            lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+            lines.append("| ScenarioCase | Algorithm | mean | median | p50 | p75 | p90 | p95 | ConnectionPercent | IterationTime |")
+            lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
             for _, r in grouped_case.iterrows():
                 cp = _fmt_num(r.get("ConnectionPercent", ""))
                 if cp != "":
@@ -125,7 +127,7 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
                     except Exception:  # noqa: BLE001
                         pass
                 lines.append(
-                    f"| {r.get('ScenarioCase', '')} | {r.get('Algorithm', '')} | {_fmt_num(r.get('mean', ''))} | {_fmt_num(r.get('median', ''))} | {_fmt_num(r.get('p50', ''))} | {_fmt_num(r.get('p95', ''))} | {_fmt_num(r.get('p99', ''))} | {cp} | {_fmt_num(r.get('IterationTime', ''))} |"
+                    f"| {r.get('ScenarioCase', '')} | {r.get('Algorithm', '')} | {_fmt_num(r.get('mean', ''))} | {_fmt_num(r.get('median', ''))} | {_fmt_num(r.get('p50', ''))} | {_fmt_num(r.get('p75', ''))} | {_fmt_num(r.get('p90', ''))} | {_fmt_num(r.get('p95', ''))} | {cp} | {_fmt_num(r.get('IterationTime', ''))} |"
                 )
             lines.append("")
 

@@ -33,8 +33,9 @@ def Get_Ike_State_Stats(df):
             'mean': np.nan,
             'median': np.nan,
             'p50': np.nan,
+            'p75': np.nan,
+            'p90': np.nan,
             'p95': np.nan,
-            'p99': np.nan,
             'stdDev': np.nan,
             'Outliers': np.nan,
             'TotalConnections': int(total),
@@ -61,8 +62,9 @@ def Get_Ike_State_Stats(df):
     mean = np.nan
     median = np.nan
     p50 = np.nan
+    p75 = np.nan
+    p90 = np.nan
     p95 = np.nan
-    p99 = np.nan
     stdDev = np.nan
     TotalConnections = 0
     ConnectionPercent = 0
@@ -97,8 +99,9 @@ def Get_Ike_State_Stats(df):
             mean = np.mean(Deltas[keep_array])
             median = np.median(Deltas)
             p50 = np.percentile(Deltas, 50)
+            p75 = np.percentile(Deltas, 75)
+            p90 = np.percentile(Deltas, 90)
             p95 = np.percentile(Deltas, 95)
-            p99 = np.percentile(Deltas, 99)
             stdDev = np.std(Deltas[keep_array])
             Outliers = int(sum(drop_array))
             TotalConnections = len(Deltas)
@@ -123,8 +126,9 @@ def Get_Ike_State_Stats(df):
         'mean': mean,
         'median': median,
         'p50': p50,
+        'p75': p75,
+        'p90': p90,
         'p95': p95,
-        'p99': p99,
         'stdDev': stdDev,
         'Outliers': Outliers,
         'TotalConnections': TotalConnections,

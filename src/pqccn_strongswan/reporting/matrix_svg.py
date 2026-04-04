@@ -9,7 +9,7 @@ from typing import Dict, List, Sequence, Tuple
 
 import pandas as pd
 
-METRICS = ("p50", "p95", "p99")
+METRICS = ("p50", "p75", "p90", "p95")
 SCENARIO_ORDER = ("ideal", "metro", "wan", "lossy")
 
 
@@ -146,10 +146,11 @@ def _render_latency_panel(pivots: Dict[str, pd.DataFrame], out_path: Path) -> bo
     if not pivots:
         return False
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5.2))
+    fig, axes = plt.subplots(2, 2, figsize=(16, 9))
     fig.patch.set_facecolor("#f6fbff")
+    axes_flat = axes.flatten()
 
-    for ax, metric in zip(axes, METRICS):
+    for ax, metric in zip(axes_flat, METRICS):
         pivot = pivots.get(metric)
         if pivot is None or pivot.empty:
             ax.axis("off")
@@ -223,10 +224,11 @@ def _render_overhead_panel(overheads: Dict[str, pd.DataFrame], out_path: Path) -
     if not overheads:
         return False
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 4.8))
+    fig, axes = plt.subplots(2, 2, figsize=(16, 8.6))
     fig.patch.set_facecolor("#f6fbff")
+    axes_flat = axes.flatten()
 
-    for ax, metric in zip(axes, METRICS):
+    for ax, metric in zip(axes_flat, METRICS):
         pivot = overheads.get(metric)
         if pivot is None or pivot.empty:
             ax.axis("off")
