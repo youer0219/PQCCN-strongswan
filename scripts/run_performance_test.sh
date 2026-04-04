@@ -7,8 +7,8 @@ export PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
 DEFAULT_COMPOSITE_CASES="ideal:0:0:0;metro:12:2:0.1;wan:68:12:0.6;lossy:135:22:2.0"
 
 QUICK_CONFIGS=(
-  "${ROOT_DIR}/data_collection/configs/DataCollect_quick_classic_ideal.yaml"
-  "${ROOT_DIR}/data_collection/configs/DataCollect_quick_hybrid_ideal.yaml"
+  "${ROOT_DIR}/configs/experiments/presets/quick_classic_ideal.yaml"
+  "${ROOT_DIR}/configs/experiments/presets/quick_hybrid_ideal.yaml"
 )
 
 join_by_comma() {
@@ -41,8 +41,8 @@ ensure_images() {
   python3 - <<PY
 from pathlib import Path
 import pandas as pd
-from pqccn_strongswan.analysis.summarize_matrix_results import generate_matrix_svgs
-from pqccn_strongswan.analysis.summarize_results import generate_packet_bytes_from_dataframe
+from pqccn_strongswan.reporting.matrix_svg import generate_matrix_svgs
+from pqccn_strongswan.reporting.packet_svg import generate_packet_bytes_from_dataframe
 
 out_dir = Path(${result_dir@Q})
 df = pd.read_csv(out_dir / "RunLogStatsDF.csv")
@@ -166,7 +166,7 @@ run_large() {
   done
 
   local cmd=(
-    python3 "${ROOT_DIR}/scripts/run_crypto_matrix.py"
+    python3 -m pqccn_strongswan.cli.matrix
     --result-dir "${result_dir}"
     --composite-cases "${composite_cases}"
     --iterations "${iterations}"

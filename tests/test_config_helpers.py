@@ -2,32 +2,40 @@ import tempfile
 import unittest
 from pathlib import Path
 import importlib.util
+import os
+import subprocess
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 HAS_PANDAS = importlib.util.find_spec("pandas") is not None
 if HAS_PANDAS:
     import pandas as pd
 
-from config_utils import resolve_config_files
+from pqccn_strongswan.config.resolver import resolve_config_files
 
 HAS_NUMPY = importlib.util.find_spec("numpy") is not None
 if HAS_NUMPY:
-    from data_collection.DataCollectCore import _build_sweep_values
+    from pqccn_strongswan.collection.runner import _build_sweep_values
 
 HAS_COLLECTOR = True
 try:
-    from data_collection.DataCollectCore import _build_netem_command
+    from pqccn_strongswan.collection.runner import _build_netem_command
 except Exception:  # noqa: BLE001
     HAS_COLLECTOR = False
 
 HAS_LOG_PARSER = True
 try:
-    from data_parsing.LogConversion import _parse_runstats_segments
+    from pqccn_strongswan.processing.log_conversion import _parse_runstats_segments
 except Exception:  # noqa: BLE001
     HAS_LOG_PARSER = False
 
 HAS_MATRIX_PLOT = True
 try:
-    from summarize_matrix_results import generate_matrix_svgs
+    from pqccn_strongswan.reporting.matrix_svg import generate_matrix_svgs
 except Exception:  # noqa: BLE001
     HAS_MATRIX_PLOT = False
 
@@ -103,6 +111,12 @@ class TestConfigHelpers(unittest.TestCase):
             out = resolve_config_files(f"{a},{b}")
             self.assertEqual(len(out), 2)
 
+    def test_resolve_config_files_from_presets_directory(self):
+        presets_dir = PROJECT_ROOT / "configs" / "experiments" / "presets"
+        out = resolve_config_files(str(presets_dir))
+        self.assertGreaterEqual(len(out), 6)
+        self.assertTrue(any(path.endswith("composite_ideal.yaml") for path in out))
+
     @unittest.skipUnless(HAS_LOG_PARSER, "log parser dependencies are required")
     def test_parse_runstats_segments_keeps_is_warmup(self):
         line = (
@@ -129,6 +143,34 @@ class TestConfigHelpers(unittest.TestCase):
             self.assertTrue((out_dir / "matrix_algo_scenario_p50.svg").exists())
             self.assertTrue((out_dir / "matrix_algo_scenario_p95.svg").exists())
             self.assertTrue((out_dir / "matrix_algo_scenario_p99.svg").exists())
+
+    def test_python_module_help_smoke(self):
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(SRC_DIR) + (f":{env['PYTHONPATH']}" if env.get("PYTHONPATH") else "")
+        proc = subprocess.run(
+            [sys.executable, "-m", "pqccn_strongswan", "--help"],
+            cwd=PROJECT_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        self.assertIn("Run end-to-end PQCCN test orchestration", proc.stdout)
+
+    def test_matrix_module_help_smoke(self):
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(SRC_DIR) + (f":{env['PYTHONPATH']}" if env.get("PYTHONPATH") else "")
+        proc = subprocess.run(
+            [sys.executable, "-m", "pqccn_strongswan.cli.matrix", "--help"],
+            cwd=PROJECT_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        self.assertIn("Run full fixed matrix for crypto algorithms x network profiles", proc.stdout)
 
 
 if __name__ == "__main__":

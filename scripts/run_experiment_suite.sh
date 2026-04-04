@@ -6,10 +6,10 @@ export PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
 OUT_DIR="${1:-$ROOT_DIR/results/$(date +%Y%m%d_%H%M%S)}"
 
 DEFAULT_CONFIGS=(
-	"$ROOT_DIR/data_collection/configs/DataCollect_composite_ideal.yaml"
-	"$ROOT_DIR/data_collection/configs/DataCollect_composite_metro.yaml"
-	"$ROOT_DIR/data_collection/configs/DataCollect_composite_wan.yaml"
-	"$ROOT_DIR/data_collection/configs/DataCollect_composite_lossy.yaml"
+	"$ROOT_DIR/configs/experiments/presets/composite_ideal.yaml"
+	"$ROOT_DIR/configs/experiments/presets/composite_metro.yaml"
+	"$ROOT_DIR/configs/experiments/presets/composite_wan.yaml"
+	"$ROOT_DIR/configs/experiments/presets/composite_lossy.yaml"
 )
 
 if [[ -n "${2:-}" ]]; then

@@ -11,8 +11,8 @@ bash ./scripts/run_performance_test.sh quick
 ```
 
 默认使用：
-- `DataCollect_quick_classic_ideal.yaml`
-- `DataCollect_quick_hybrid_ideal.yaml`
+- `configs/experiments/presets/quick_classic_ideal.yaml`
+- `configs/experiments/presets/quick_hybrid_ideal.yaml`
 
 ### `large`
 
@@ -73,5 +73,5 @@ bash ./scripts/run_performance_test.sh large \
 
 ```bash
 python3 -m unittest discover -s tests -p 'test_*.py'
-python3 -m py_compile Orchestration.py scripts/run_crypto_matrix.py
+python3 -m py_compile src/pqccn_strongswan/cli/orchestrator.py src/pqccn_strongswan/cli/matrix.py
 ```

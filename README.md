@@ -35,21 +35,23 @@ bash ./scripts/run_performance_test.sh large
 ```bash
 python3 -m pqccn_strongswan \
   ./results/custom_run \
-  "./data_collection/configs/DataCollect_composite_ideal.yaml,./data_collection/configs/DataCollect_composite_wan.yaml"
+  "./configs/experiments/presets/composite_ideal.yaml,./configs/experiments/presets/composite_wan.yaml"
+```
+
+固定矩阵命令也可直接调用：
+
+```bash
+pqccn-matrix --result-dir ./results/crypto_matrix
 ```
 
 ## 当前项目结构
 
 - `src/pqccn_strongswan/`: 主 Python 包与实现代码
+- `configs/experiments/`: 仓库内维护的 YAML 实验配置
 - `scripts/`: 实验执行与环境辅助脚本
-- `data_collection/configs/`: 当前保留的 YAML 配置集
 - `pq-strongswan/`: strongSwan 容器与证书资产
 - `tests/`: 自动化测试
 - `docs/`: 使用说明、配置参考与项目结构文档
-
-兼容性说明：
-- 根目录的 `Orchestration.py`、`reporting.py`、`summarize_*.py` 以及 `data_*` 目录仍保留为薄兼容层
-- 新增开发应优先使用 `src/pqccn_strongswan/` 下的实现与 `python3 -m pqccn_strongswan`
 
 ## 默认实验矩阵
 

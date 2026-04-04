@@ -1,5 +1,5 @@
 ---
-# Template: DataCollect_SCENARIO_MODIFIER.yaml
+# Template: scenario_modifier.yaml
 #
 # Unified network profile model:
 # - Leave any profile value as empty string to mean "no limit".

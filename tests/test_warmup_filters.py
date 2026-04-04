@@ -3,20 +3,24 @@ import unittest
 from pathlib import Path
 import importlib.util
 import inspect
+import sys
 from unittest import mock
+
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 HAS_PANDAS = importlib.util.find_spec("pandas") is not None
 if HAS_PANDAS:
     import pandas as pd
-    from data_analysis import Plotting
-    from reporting import generate_experiment_report
-    from pqccn_strongswan.parsing import process_logs
+    from pqccn_strongswan.processing import logs
+    from pqccn_strongswan.reporting import PlotVariParam, generate_experiment_report
 
 
 @unittest.skipUnless(HAS_PANDAS, "pandas is required for warmup filter tests")
 class TestWarmupFilters(unittest.TestCase):
     def test_plotting_api_does_not_accept_include_warmup(self):
-        params = inspect.signature(Plotting.PlotVariParam).parameters
+        params = inspect.signature(PlotVariParam).parameters
 
         self.assertNotIn("include_warmup", params)
 
@@ -26,7 +30,7 @@ class TestWarmupFilters(unittest.TestCase):
         self.assertNotIn("include_warmup", params)
 
     def test_plotting_handles_none_input(self):
-        audit_df = Plotting.PlotVariParam(None, tempfile.gettempdir(), 0)
+        audit_df = PlotVariParam(None, tempfile.gettempdir(), 0)
 
         self.assertTrue(audit_df.empty)
 
@@ -48,10 +52,10 @@ class TestWarmupFilters(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with mock.patch.object(process_logs, "RunStats", return_value=str(runstats_path)), \
-                 mock.patch.object(process_logs, "get_Ike_State", return_value={"state": ["ok"]}), \
-                 mock.patch.object(process_logs, "Get_Ike_State_Stats", return_value={"ConnectionPercent": 1.0}):
-                result = process_logs.Log_stats(tmpdir, 0)
+            with mock.patch.object(logs, "RunStats", return_value=str(runstats_path)), \
+                 mock.patch.object(logs, "get_Ike_State", return_value={"state": ["ok"]}), \
+                 mock.patch.object(logs, "Get_Ike_State_Stats", return_value={"ConnectionPercent": 1.0}):
+                result = logs.Log_stats(tmpdir, 0)
 
         self.assertEqual(result["ScenarioCase"].tolist(), ["ideal"])
         self.assertEqual(result["FullFilePath"].tolist(), ["/logs/cold.log"])

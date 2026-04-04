@@ -4,22 +4,22 @@
 
 ### 固定网络画像
 
-- `data_collection/configs/DataCollect_composite_ideal.yaml`
-- `data_collection/configs/DataCollect_composite_metro.yaml`
-- `data_collection/configs/DataCollect_composite_wan.yaml`
-- `data_collection/configs/DataCollect_composite_lossy.yaml`
+- `configs/experiments/presets/composite_ideal.yaml`
+- `configs/experiments/presets/composite_metro.yaml`
+- `configs/experiments/presets/composite_wan.yaml`
+- `configs/experiments/presets/composite_lossy.yaml`
 
 ### 快速验证
 
-- `data_collection/configs/DataCollect_quick_classic_ideal.yaml`
-- `data_collection/configs/DataCollect_quick_hybrid_ideal.yaml`
+- `configs/experiments/presets/quick_classic_ideal.yaml`
+- `configs/experiments/presets/quick_hybrid_ideal.yaml`
 
 ### 模板
 
-- `data_collection/configs/DataCollect_TEMPLATE.yaml`
+- `configs/experiments/templates/experiment_template.yaml`
 
 历史配置仍保存在：
-- `data_collection/configs/archived_configs/`
+- `configs/experiments/archived/`
 
 ## 统一配置模型
 

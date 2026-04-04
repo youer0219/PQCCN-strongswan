@@ -162,7 +162,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Generate configs and print command only")
     args = parser.parse_args()
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[3]
     result_dir = (repo_root / args.result_dir).resolve()
     cfg_dir = result_dir / "generated_configs"
     cfg_dir.mkdir(parents=True, exist_ok=True)
@@ -209,7 +209,7 @@ def main() -> int:
                 ),
                 "Carol_Network_Config": net_cfg,
             }
-            cfg_path = cfg_dir / f"DataCollect_{scenario['name']}_composite_{case['name']}.yaml"
+            cfg_path = cfg_dir / f"composite_{scenario['name']}_{case['name']}.yaml"
             _write_yaml(cfg_path, cfg)
             generated.append(cfg_path)
 

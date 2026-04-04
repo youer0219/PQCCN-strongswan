@@ -1,9 +1,9 @@
 """Run the end-to-end PQCCN orchestration pipeline.
 
 Preferred usage:
-  python3 -m pqccn_strongswan ./logs ./data_collection/configs/DataCollect_composite_ideal.yaml
-  python3 -m pqccn_strongswan ./logs "./data_collection/configs/*.yaml"
-  python3 -m pqccn_strongswan ./logs ./data_collection/configs/
+  python3 -m pqccn_strongswan ./logs ./configs/experiments/presets/composite_ideal.yaml
+  python3 -m pqccn_strongswan ./logs "./configs/experiments/presets/*.yaml"
+  python3 -m pqccn_strongswan ./logs ./configs/experiments/presets/
 """
 
 import argparse
@@ -22,16 +22,14 @@ def main() -> int:
         "--collect-print-level",
         type=int,
         default=1,
-        help="DataCollectCore print level",
+        help="Collection runner print level",
     )
     args = parser.parse_args()
 
-    from .analysis import plotting
-    from .collection import data_collect_core
-    from .config_utils import resolve_config_files
-    from .parsing import process_logs
-    from .preparation import process_stats
-    from .reporting import generate_experiment_report
+    from ..collection import runner
+    from ..config import resolve_config_files
+    from ..processing import logs, stats
+    from ..reporting import PlotVariParam, generate_experiment_report
 
     log_dir = str(Path(args.log_dir))
     Path(log_dir).mkdir(parents=True, exist_ok=True)
@@ -42,16 +40,16 @@ def main() -> int:
 
     for yml_cfg in config_files:
         print(f"Processing Config File: {yml_cfg}\n")
-        data_collect_core.RunConfig(yml_cfg, (log_dir + "/"), args.collect_print_level)
+        runner.RunConfig(yml_cfg, (log_dir + "/"), args.collect_print_level)
 
-    run_log_stats_df = process_logs.Log_stats(log_dir, args.print_level)
+    run_log_stats_df = logs.Log_stats(log_dir, args.print_level)
     data_file = str(Path(log_dir) / "RunLogStatsDF.csv")
     run_log_stats_df.to_csv(data_file, index=False)
 
-    run_log_stats_df = process_stats.MarkLogs(run_log_stats_df, args.print_level)
+    run_log_stats_df = stats.MarkLogs(run_log_stats_df, args.print_level)
     run_log_stats_df.to_csv(data_file, index=False)
 
-    plot_audit_df = plotting.PlotVariParam(run_log_stats_df, log_dir, args.print_level)
+    plot_audit_df = PlotVariParam(run_log_stats_df, log_dir, args.print_level)
     if plot_audit_df is not None and len(plot_audit_df) > 0:
         plot_audit_df.to_csv(str(Path(log_dir) / "PlotAudit.csv"), index=False)
 

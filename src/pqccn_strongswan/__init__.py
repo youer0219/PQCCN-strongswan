@@ -1,5 +1,5 @@
 """PQCCN strongSwan experiment pipeline."""
 
-from .orchestrator import main
+from .cli.orchestrator import main
 
 __all__ = ["main"]

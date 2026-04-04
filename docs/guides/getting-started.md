@@ -38,7 +38,7 @@ bash ./scripts/run_performance_test.sh large
 ```bash
 python3 -m pqccn_strongswan \
   ./results/manual_run \
-  ./data_collection/configs/DataCollect_composite_ideal.yaml
+  ./configs/experiments/presets/composite_ideal.yaml
 ```
 
 一次运行多个配置：
@@ -46,7 +46,7 @@ python3 -m pqccn_strongswan \
 ```bash
 python3 -m pqccn_strongswan \
   ./results/custom_run \
-  "./data_collection/configs/DataCollect_composite_ideal.yaml,./data_collection/configs/DataCollect_composite_wan.yaml"
+  "./configs/experiments/presets/composite_ideal.yaml,./configs/experiments/presets/composite_wan.yaml"
 ```
 
 ## 结果目录
@@ -59,11 +59,9 @@ python3 -m pqccn_strongswan \
 - `matrix_*.svg`
 - `packet_bytes.svg`（如果数据列存在）
 
-## 兼容入口
+## 当前入口
 
-为了避免旧脚本立即失效，仓库根目录和旧模块路径仍保留兼容包装层，例如：
-- `Orchestration.py`
-- `reporting.py`
-- `data_collection/DataCollectCore.py`
-
-新开发请优先使用包入口与 `src/pqccn_strongswan/` 下的模块。
+推荐入口：
+- `python3 -m pqccn_strongswan`
+- `pqccn-matrix`
+- `src/pqccn_strongswan/` 下的包模块

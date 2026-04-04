@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from .summarize_matrix_results import generate_matrix_svgs
-from .summarize_results import generate_packet_bytes_from_dataframe
+from .matrix_svg import generate_matrix_svgs
+from .packet_svg import generate_packet_bytes_from_dataframe
 
 
 def PlotVariParam(RunLogStatsDF, plot_dir, plvl):

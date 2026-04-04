@@ -1,6 +1,4 @@
-## ProcessStats.py
-# Path: data_preparation/ProcessStats.py
-# Process Stats is a module that contains functions to the logfile dataframe (RunLogStatsDF) 
+"""Transform run-log statistics into labeled experiment summaries."""
 
 import re
 

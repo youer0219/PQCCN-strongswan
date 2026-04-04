@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [project.scripts]
-pqccn-strongswan = "pqccn_strongswan.orchestrator:main"
+pqccn-strongswan = "pqccn_strongswan.cli.orchestrator:main"
+pqccn-matrix = "pqccn_strongswan.cli.matrix:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

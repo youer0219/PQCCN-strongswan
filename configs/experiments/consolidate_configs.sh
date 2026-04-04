@@ -1,12 +1,12 @@
 #!/bin/bash
-# Configuration Consolidation Script
-# This script helps consolidate redundant test configurations and reorganize them.
-# USAGE: bash consolidate_configs.sh [--dry-run] [--archive]
+# Configuration consolidation helper for configs/experiments.
+# USAGE: bash configs/experiments/consolidate_configs.sh [--dry-run] [--archive]
 
 set -e
 
-CONFIGS_DIR="./data_collection/configs"
-ARCHIVE_DIR="${CONFIGS_DIR}/archived_configs"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+CONFIGS_DIR="${ROOT_DIR}/configs/experiments/presets"
+ARCHIVE_DIR="${ROOT_DIR}/configs/experiments/archived"
 DRY_RUN=false
 ARCHIVE=false
 
@@ -26,29 +26,29 @@ echo ""
 
 # Configs to KEEP (retained composite + quick set)
 KEEP_CONFIGS=(
-  "DataCollect_composite_ideal.yaml"
-  "DataCollect_composite_metro.yaml"
-  "DataCollect_composite_wan.yaml"
-  "DataCollect_composite_lossy.yaml"
-  "DataCollect_quick_classic_ideal.yaml"
-  "DataCollect_quick_hybrid_ideal.yaml"
+  "composite_ideal.yaml"
+  "composite_metro.yaml"
+  "composite_wan.yaml"
+  "composite_lossy.yaml"
+  "quick_classic_ideal.yaml"
+  "quick_hybrid_ideal.yaml"
 )
 
-# Configs to REMOVE (duplicates, outdated, or specific-algorithm variants)
+# Configs to REMOVE if they are still found in presets.
 REMOVE_CONFIGS=(
-  "DataCollect_DH.yaml"
-  "DataCollect_Delay_DH_baseline_WIN1.yaml"
-  "DataCollect_Delay_PQ_WIN1.yaml"
-  "DataCollect_burst_DH.yaml"
-  "DataCollect_burst_PQ.yaml"
-  "DataCollect_delay_DH.yaml"
-  "DataCollect_delay_PQ.yaml"
-  "DataCollect_duplicate.yaml"
-  "DataCollect_duplicate_DH.yaml"
-  "DataCollect_pktLoss_DH.yaml"
-  "DataCollect_pktLoss_PQ.yaml"
-  "DataCollect_pktLoss_extensive.yaml"
-  "DataCollect.yaml"
+  "dh.yaml"
+  "delay_dh_baseline_win1.yaml"
+  "delay_pq_win1.yaml"
+  "burst_dh.yaml"
+  "burst_pq.yaml"
+  "delay_dh.yaml"
+  "delay_pq.yaml"
+  "duplicate.yaml"
+  "duplicate_dh.yaml"
+  "pkt_loss_dh.yaml"
+  "pkt_loss_pq.yaml"
+  "pkt_loss_extensive.yaml"
+  "default.yaml"
 )
 
 echo "Configs to KEEP ($(echo ${#KEEP_CONFIGS[@]})):"
@@ -95,6 +95,6 @@ fi
 
 echo ""
 echo "=== Final Config List ==="
-ls -1 "$CONFIGS_DIR"/DataCollect_*.yaml | xargs -n1 basename | sort
+find "$CONFIGS_DIR" -maxdepth 1 -name "*.yaml" -printf "%f\n" | sort
 echo ""
-echo "Total configs: $(ls -1 "$CONFIGS_DIR"/DataCollect_*.yaml 2>/dev/null | wc -l)"
+echo "Total configs: $(find "$CONFIGS_DIR" -maxdepth 1 -name '*.yaml' | wc -l)"
