@@ -9,6 +9,8 @@ from typing import Dict, List, Sequence, Tuple
 
 import pandas as pd
 
+from ..processing.warmup import exclude_warmup_rows
+
 METRICS = ("p50", "p75", "p90", "p95")
 SCENARIO_ORDER = ("ideal", "metro", "wan", "lossy")
 
@@ -51,7 +53,9 @@ def _prepare_base_table(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
 
-    work = df.copy()
+    work = exclude_warmup_rows(df)
+    if work.empty:
+        return pd.DataFrame()
 
     algo_col = _find_col(work, "Algorithm", "Algorithm")
     scen_col = _find_col(work, "ScenarioCase", "VariParam")

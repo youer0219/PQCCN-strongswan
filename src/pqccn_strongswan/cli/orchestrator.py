@@ -29,6 +29,7 @@ def main() -> int:
     from ..collection import runner
     from ..config import resolve_config_files
     from ..processing import logs, stats
+    from ..processing.warmup import exclude_warmup_rows
     from ..reporting import PlotVariParam, generate_experiment_report
 
     log_dir = str(Path(args.log_dir))
@@ -47,6 +48,7 @@ def main() -> int:
     run_log_stats_df.to_csv(data_file, index=False)
 
     run_log_stats_df = stats.MarkLogs(run_log_stats_df, args.print_level)
+    run_log_stats_df = exclude_warmup_rows(run_log_stats_df)
     run_log_stats_df.to_csv(data_file, index=False)
 
     plot_audit_df = PlotVariParam(run_log_stats_df, log_dir, args.print_level)

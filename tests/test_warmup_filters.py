@@ -14,6 +14,7 @@ HAS_PANDAS = importlib.util.find_spec("pandas") is not None
 if HAS_PANDAS:
     import pandas as pd
     from pqccn_strongswan.processing import logs
+    from pqccn_strongswan.reporting import plots
     from pqccn_strongswan.reporting import PlotVariParam, generate_experiment_report
 
 
@@ -60,6 +61,76 @@ class TestWarmupFilters(unittest.TestCase):
         self.assertEqual(result["ScenarioCase"].tolist(), ["ideal"])
         self.assertEqual(result["FullFilePath"].tolist(), ["/logs/cold.log"])
 
+    def test_process_logs_filters_quoted_is_warmup_rows(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runstats_path = Path(tmpdir) / "runstats.csv"
+            runstats_path.write_text(
+                (
+                    'FilePath: /logs/,FileName: cold.log,ScenarioNote: algo__ideal,VariParam: "network_profile",IsWarmup: "0",TotalTime: 1.0,IterationTime: 1.0,\n'
+                    'FilePath: /logs/,FileName: warm.log,ScenarioNote: algo__ideal__warmup,VariParam: "network_profile",IsWarmup: "1",TotalTime: 2.0,IterationTime: 2.0,\n'
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(logs, "RunStats", return_value=str(runstats_path)), \
+                 mock.patch.object(logs, "get_Ike_State", return_value={"state": ["ok"]}), \
+                 mock.patch.object(logs, "Get_Ike_State_Stats", return_value={"ConnectionPercent": 1.0}):
+                result = logs.Log_stats(tmpdir, 0)
+
+        self.assertEqual(result["FileName"].tolist(), ["cold.log"])
+
+    def test_process_logs_filters_scenario_note_warmup_rows_without_is_warmup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runstats_path = Path(tmpdir) / "runstats.csv"
+            runstats_path.write_text(
+                (
+                    "FilePath: /logs/,FileName: cold.log,ScenarioNote: algo__ideal,VariParam: network_profile,TotalTime: 1.0,IterationTime: 1.0,\n"
+                    "FilePath: /logs/,FileName: warm.log,ScenarioNote: algo__ideal__warmup,VariParam: network_profile,TotalTime: 2.0,IterationTime: 2.0,\n"
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(logs, "RunStats", return_value=str(runstats_path)), \
+                 mock.patch.object(logs, "get_Ike_State", return_value={"state": ["ok"]}), \
+                 mock.patch.object(logs, "Get_Ike_State_Stats", return_value={"ConnectionPercent": 1.0}):
+                result = logs.Log_stats(tmpdir, 0)
+
+        self.assertEqual(result["FileName"].tolist(), ["cold.log"])
+
+    def test_plot_generation_excludes_warmup_rows_from_input_dataframe(self):
+        df = pd.DataFrame(
+            [
+                {
+                    "Algorithm": "Classic-KEX + Classic-Cert",
+                    "ScenarioCase": "ideal",
+                    "VariParam": "network_profile",
+                    "p50": 0.1,
+                    "p75": 0.2,
+                    "p90": 0.3,
+                    "p95": 0.4,
+                    "IsWarmup": '"0"',
+                },
+                {
+                    "Algorithm": "Classic-KEX + Classic-Cert",
+                    "ScenarioCase": "warmup",
+                    "VariParam": "network_profile",
+                    "p50": 9.1,
+                    "p75": 9.2,
+                    "p90": 9.3,
+                    "p95": 9.4,
+                    "IsWarmup": '"1"',
+                },
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with mock.patch.object(plots, "generate_matrix_svgs", return_value=pd.DataFrame()) as matrix_mock, \
+                 mock.patch.object(plots, "generate_packet_bytes_from_dataframe", return_value=None):
+                PlotVariParam(df, tmpdir, 0)
+
+        filtered_df = matrix_mock.call_args.args[0]
+        self.assertEqual(filtered_df["ScenarioCase"].tolist(), ["ideal"])
+
     def test_report_generation_excludes_warmup_by_default(self):
         df = pd.DataFrame(
             [
@@ -97,6 +168,47 @@ class TestWarmupFilters(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             filtered_df = df.loc[df["IsWarmup"] == "0"].copy()
             report_path = generate_experiment_report(tmpdir, filtered_df, pd.DataFrame())
+            report_text = Path(report_path).read_text(encoding="utf-8")
+
+        self.assertIn("ideal", report_text)
+        self.assertNotIn("warmup", report_text.lower())
+
+    def test_report_generation_filters_quoted_warmup_rows(self):
+        df = pd.DataFrame(
+            [
+                {
+                    "Algorithm": "Classic-KEX + Classic-Cert",
+                    "ScenarioCase": "ideal",
+                    "VariParam": "network_profile",
+                    "mean": 0.1,
+                    "median": 0.1,
+                    "p50": 0.1,
+                    "p75": 0.15,
+                    "p90": 0.18,
+                    "p95": 0.2,
+                    "ConnectionPercent": 1.0,
+                    "IterationTime": 0.1,
+                    "IsWarmup": '"0"',
+                },
+                {
+                    "Algorithm": "Classic-KEX + Classic-Cert",
+                    "ScenarioCase": "warmup",
+                    "VariParam": "network_profile",
+                    "mean": 99.0,
+                    "median": 99.0,
+                    "p50": 99.0,
+                    "p75": 99.0,
+                    "p90": 99.0,
+                    "p95": 99.0,
+                    "ConnectionPercent": 1.0,
+                    "IterationTime": 99.0,
+                    "IsWarmup": '"1"',
+                },
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = generate_experiment_report(tmpdir, df, pd.DataFrame())
             report_text = Path(report_path).read_text(encoding="utf-8")
 
         self.assertIn("ideal", report_text)

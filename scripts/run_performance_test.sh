@@ -42,13 +42,13 @@ ensure_images() {
   python3 - <<PY
 from pathlib import Path
 import pandas as pd
-from pqccn_strongswan.reporting.matrix_svg import generate_matrix_svgs
-from pqccn_strongswan.reporting.packet_svg import generate_packet_bytes_from_dataframe
+from pqccn_strongswan.reporting import PlotVariParam
 
 out_dir = Path(${result_dir@Q})
 df = pd.read_csv(out_dir / "RunLogStatsDF.csv")
-generate_matrix_svgs(df, out_dir)
-generate_packet_bytes_from_dataframe(df, out_dir)
+audit_df = PlotVariParam(df, out_dir, 0)
+if audit_df is not None and len(audit_df) > 0:
+    audit_df.to_csv(out_dir / "PlotAudit.csv", index=False)
 PY
 
   if [[ -f "${p50_svg}" && -f "${p75_svg}" && -f "${p90_svg}" && -f "${p95_svg}" ]]; then

@@ -8,6 +8,7 @@ from pathlib import Path
 from IPython.display import display
 
 from .log_conversion import Get_Ike_State_Stats, RunStats, get_Ike_State
+from .warmup import build_warmup_mask
 
 
 def Log_stats(log_dir, plvl):
@@ -60,22 +61,10 @@ def Log_stats(log_dir, plvl):
 
     runstats_df = pd.DataFrame(data3)
 
-    if "IsWarmup" in runstats_df.columns:
-        warmup_mask = runstats_df["IsWarmup"].fillna("0").astype(str).str.strip().str.lower().isin({"1", "true", "yes"})
-        if plvl >= 1:
-            print(f"Warmup rows filtered (IsWarmup): {int(warmup_mask.sum())}")
-        runstats_df = runstats_df.loc[~warmup_mask].copy()
-
-    if "ScenarioCase" in runstats_df.columns:
-        scenario_warmup_mask = runstats_df["ScenarioCase"].fillna("").astype(str).str.lower().str.contains("warmup", regex=False)
-        if plvl >= 1:
-            print(f"Warmup rows filtered (ScenarioCase): {int(scenario_warmup_mask.sum())}")
-        runstats_df = runstats_df.loc[~scenario_warmup_mask].copy()
-    elif "VariParam" in runstats_df.columns:
-        variParam_warmup_mask = runstats_df["VariParam"].fillna("").astype(str).str.lower().str.contains("warmup", regex=False)
-        if plvl >= 1:
-            print(f"Warmup rows filtered (VariParam): {int(variParam_warmup_mask.sum())}")
-        runstats_df = runstats_df.loc[~variParam_warmup_mask].copy()
+    warmup_mask = build_warmup_mask(runstats_df)
+    if plvl >= 1:
+        print(f"Warmup rows filtered: {int(warmup_mask.sum())}")
+    runstats_df = runstats_df.loc[~warmup_mask].copy()
 
     if plvl >= 2:
         print("\n\nRunStatsDF:\n")

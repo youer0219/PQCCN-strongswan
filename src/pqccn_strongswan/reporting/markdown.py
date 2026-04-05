@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from ..processing.warmup import exclude_warmup_rows
+
 
 def _fmt_num(value):
     try:
@@ -25,7 +27,7 @@ def generate_experiment_report(log_dir, run_log_stats_df, plot_audit_df):
     out_dir = Path(log_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    data_for_report = run_log_stats_df.copy() if run_log_stats_df is not None else pd.DataFrame()
+    data_for_report = exclude_warmup_rows(run_log_stats_df)
 
     report_path = out_dir / "ExperimentReport.md"
     image_files = sorted([p.name for p in out_dir.iterdir() if p.suffix.lower() in {".png", ".svg"}])
