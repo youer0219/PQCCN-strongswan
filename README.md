@@ -73,6 +73,20 @@ pqccn-matrix --result-dir ./results/crypto_matrix
 - `Hybrid(1PQ)-KEX + PQ-Cert`
 - `Hybrid(2PQ)-KEX + PQ-Cert`
 
+默认算法组合细化（对应当前仓库配置）：
+- `Classic-KEX + Classic-Cert`
+  - Compose: `./pq-strongswan/baseline-docker-compose.yml`
+  - IKE/ESP 经典提案：`aes256-sha256-ecp256`、`aes256-sha256-modp2048`（IKE 侧包含 `x25519`/`modp2048` 协商）
+  - 证书：经典证书（`DH/` 目录中的 ECDSA 证书）
+- `Hybrid(1PQ)-KEX + PQ-Cert`
+  - Compose: `./pq-strongswan/hybrid1pq-docker-compose.yml`
+  - IKE/ESP 混合提案：`ke1_kyber3-aes256-sha256-x25519`
+  - 证书：PQ 证书（`dilithium5` 端实体证书）
+- `Hybrid(2PQ)-KEX + PQ-Cert`
+  - Compose: `./pq-strongswan/hybrid2pq-docker-compose.yml`
+  - IKE/ESP 混合提案：`ke1_kyber3-ke2_bike3-aes256-sha256-x25519`
+  - 证书：PQ 证书（`dilithium5` 端实体证书）
+
 默认网络场景（`rtt/one-way delay/jitter/loss`）：
 - `ideal`: `0/0/0/0%`
 - `metro`: `15/7.5/1.875/0.05%`
