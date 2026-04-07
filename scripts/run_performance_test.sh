@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
+VENV_PYTHON="${ROOT_DIR}/.venv/bin/python"
+PYTHON_BIN=""
 
 DEFAULT_COMPOSITE_CASES="ideal:0:0;metro:15:0.05;wan:105:0.3;lossy:230:1.0"
 
@@ -19,6 +21,43 @@ join_by_comma() {
 format_hms() {
   local total="$1"
   printf '%02d:%02d:%02d\n' $((total/3600)) $((total%3600/60)) $((total%60))
+}
+
+resolve_python_bin() {
+  if [[ -x "${VENV_PYTHON}" ]]; then
+    PYTHON_BIN="${VENV_PYTHON}"
+  elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+  else
+    echo "[Python] python3 not found." >&2
+    echo "[Python] Run: bash ./scripts/install_python_deps.sh" >&2
+    exit 1
+  fi
+}
+
+ensure_python_deps() {
+  local check_output
+  if ! check_output="$("${PYTHON_BIN}" - <<'PY' 2>&1
+import importlib.util
+import sys
+
+required = ("numpy", "pandas", "yaml", "python_on_whales", "tqdm", "matplotlib")
+missing = [name for name in required if importlib.util.find_spec(name) is None]
+if missing:
+    print(",".join(missing))
+    raise SystemExit(1)
+print(sys.executable)
+PY
+)"; then
+    local missing_modules
+    missing_modules="$(printf '%s\n' "${check_output}" | tail -n 1)"
+    echo "[Python] Selected interpreter: ${PYTHON_BIN}" >&2
+    echo "[Python] Missing dependencies: ${missing_modules}" >&2
+    echo "[Python] Recommended fix: bash ./scripts/install_python_deps.sh" >&2
+    exit 1
+  fi
+
+  echo "[Python] Using interpreter: ${check_output}"
 }
 
 ensure_images() {
@@ -39,7 +78,7 @@ ensure_images() {
   fi
 
   echo "[Images] Regenerating SVG outputs from RunLogStatsDF.csv ..."
-  python3 - <<PY
+  "${PYTHON_BIN}" - <<PY
 from pathlib import Path
 import pandas as pd
 from pqccn_strongswan.reporting import PlotVariParam
@@ -105,7 +144,7 @@ run_quick() {
   local start end elapsed
   start=$(date +%s)
   bash "${ROOT_DIR}/scripts/setup_docker_test_env.sh" >/dev/null 2>&1 || true
-  python3 -m pqccn_strongswan "${result_dir}" "${config_list}" \
+  "${PYTHON_BIN}" -m pqccn_strongswan "${result_dir}" "${config_list}" \
     --print-level "${print_level}" --collect-print-level "${collect_level}"
   end=$(date +%s)
   elapsed=$((end - start))
@@ -167,7 +206,7 @@ run_large() {
   done
 
   local cmd=(
-    python3 -m pqccn_strongswan.cli.matrix
+    "${PYTHON_BIN}" -m pqccn_strongswan.cli.matrix
     --result-dir "${result_dir}"
     --composite-cases "${composite_cases}"
     --iterations "${iterations}"
@@ -247,6 +286,10 @@ if [[ -z "${mode}" ]]; then
   exit 1
 fi
 shift || true
+
+resolve_python_bin
+ensure_python_deps
+cd "${ROOT_DIR}"
 
 case "${mode}" in
   quick)
