@@ -107,13 +107,11 @@ def _set_profile_value(profile_map: Dict[str, str], key: str, value: float):
 
 def _build_network_config(composite_case: Dict) -> Dict:
     delay_ms = round(float(composite_case["rtt_ms"]) / 2.0, 4)
-    jitter_case = round(delay_ms / 4.0, 4)
     loss_case = max(0.0, float(composite_case["loss_pct"]))
     rate_raw = float(composite_case.get("rate_kbit", -1.0))
 
     composite_profile = _empty_network_profile()
     _set_profile_value(composite_profile, "delay_ms", delay_ms)
-    _set_profile_value(composite_profile, "jitter_ms", jitter_case)
     _set_profile_value(composite_profile, "loss_pct", loss_case)
     if rate_raw > 0:
         _set_profile_value(composite_profile, "rate_kbit", rate_raw)

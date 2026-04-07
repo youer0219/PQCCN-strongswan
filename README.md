@@ -87,16 +87,16 @@ pqccn-matrix --result-dir ./results/crypto_matrix
   - IKE/ESP 混合提案：`ke1_kyber3-ke2_bike3-aes256-sha256-x25519`
   - 证书：PQ 证书（`dilithium5` 端实体证书）
 
-默认网络场景（`rtt/one-way delay/jitter/loss`）：
-- `ideal`: `0/0/0/0%`
-- `metro`: `15/7.5/1.875/0.05%`
-- `wan`: `105/52.5/13.125/0.3%`
-- `lossy`: `230/115/28.75/1.0%`
+默认网络场景（`rtt/one-way delay/loss`）：
+- `ideal`: `0/0/0%`
+- `metro`: `15/7.5/0.05%`
+- `wan`: `105/52.5/0.3%`
+- `lossy`: `230/115/1.0%`
 
 其中：
 - `delay_ms = RTT / 2`
-- `jitter_ms = RTT / 8`（即单向时延的四分之一）
 - `loss_pct` 为双向丢包率，会同时配置到 `Carol` 和 `Moon`
+- `jitter_ms` 仍可在手写 YAML 中显式配置，但默认矩阵与预置场景不会自动设置
 
 默认 `rate_kbit=-1`，表示不限速。可通过 `--composite-cases` 覆盖矩阵场景。
 

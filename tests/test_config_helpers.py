@@ -141,6 +141,11 @@ class TestConfigHelpers(unittest.TestCase):
             self.assertEqual(data["CoreConfig"]["TrafficCommand"], "ping -c 2 10.1.0.3")
             self.assertIn("Moon_Network_Config", data)
             self.assertEqual(data["Moon_Network_Config"]["AdjustHost"], "moon")
+            self.assertEqual(
+                data["Carol_Network_Config"]["Profile"],
+                data["Moon_Network_Config"]["Profile"],
+            )
+            self.assertEqual(data["Carol_Network_Config"]["Profile"]["jitter_ms"], "")
 
     def test_moon_virtual_ip_pools_use_dedicated_remote_access_subnet(self):
         moon_cfg_paths = [
@@ -274,7 +279,7 @@ class TestConfigHelpers(unittest.TestCase):
                 data["Moon_Network_Config"]["Profile"],
             )
             self.assertEqual(data["Carol_Network_Config"]["Profile"]["delay_ms"], "7.5")
-            self.assertEqual(data["Carol_Network_Config"]["Profile"]["jitter_ms"], "1.875")
+            self.assertEqual(data["Carol_Network_Config"]["Profile"]["jitter_ms"], "")
             self.assertEqual(data["Carol_Network_Config"]["Profile"]["loss_pct"], "0.05")
 
     @unittest.skipUnless(HAS_MATRIX_CLI, "matrix cli dependencies are required")

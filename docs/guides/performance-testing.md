@@ -55,10 +55,10 @@ bash ./scripts/run_performance_test.sh large \
 
 说明：
 - `rtt_ms` 会自动转换为单向 `delay_ms=RTT/2`
-- `jitter_ms` 会自动推导为 `RTT/8`
 - 生成的矩阵 YAML 会默认把同一组 WAN 画像同时写入 `Carol_Network_Config` 和 `Moon_Network_Config`
 - `loss_pct` 表示双向丢包率
 - 省略 `rate_kbit` 时表示不限速
+- `jitter_ms` 仍可在手写 YAML 中显式配置，但 large 默认生成不会自动设置
 - large 模式会自动生成中间 YAML 配置到结果目录下的 `generated_configs/`
 
 ## Warmup 行为

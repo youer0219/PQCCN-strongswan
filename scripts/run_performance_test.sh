@@ -274,7 +274,7 @@ large options:
 Notes:
   - Composite case format is name:rtt_ms:loss_pct[:rate_kbit]
   - RTT is automatically converted to one-way delay for netem
-  - Jitter is derived as one-way delay / 4 (that is, RTT / 8)
+  - Default composite cases do not auto-derive jitter; set jitter_ms explicitly in YAML if needed
   - Loss is applied symmetrically on both Carol and Moon
   - Omitted rate_kbit means unlimited bandwidth (internally -1)
   - Script checks/repairs SVG generation after non-dry-run execution
