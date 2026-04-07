@@ -15,6 +15,7 @@ import argparse
 import os
 import shlex
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Dict, List
@@ -218,8 +219,9 @@ def main() -> int:
             generated.append(cfg_path)
 
     config_arg = ",".join(str(p) for p in generated)
+    python_bin = sys.executable or "python3"
     orch_cmd = [
-        "python3",
+        python_bin,
         "-m",
         "pqccn_strongswan",
         str(result_dir),

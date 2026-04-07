@@ -5,6 +5,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+from unittest.mock import patch
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -275,6 +276,40 @@ class TestConfigHelpers(unittest.TestCase):
             self.assertEqual(data["Carol_Network_Config"]["Profile"]["delay_ms"], "7.5")
             self.assertEqual(data["Carol_Network_Config"]["Profile"]["jitter_ms"], "1.875")
             self.assertEqual(data["Carol_Network_Config"]["Profile"]["loss_pct"], "0.05")
+
+    @unittest.skipUnless(HAS_MATRIX_CLI, "matrix cli dependencies are required")
+    def test_matrix_uses_current_interpreter_for_orchestration(self):
+        from pqccn_strongswan.cli import matrix
+
+        with tempfile.TemporaryDirectory() as td:
+            result_dir = Path(td) / "matrix_exec"
+            argv = [
+                "pqccn_strongswan.cli.matrix",
+                "--result-dir",
+                str(result_dir),
+                "--iterations",
+                "1",
+                "--warmup-iters",
+                "0",
+            ]
+
+            with patch.object(sys, "argv", argv):
+                with patch("pqccn_strongswan.cli.matrix.subprocess.run") as run_mock:
+                    run_mock.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+
+                    rc = matrix.main()
+
+        self.assertEqual(rc, 0)
+        run_mock.assert_called_once()
+
+        cmd = run_mock.call_args.args[0]
+        kwargs = run_mock.call_args.kwargs
+
+        self.assertEqual(cmd[0], sys.executable)
+        self.assertEqual(cmd[1:3], ["-m", "pqccn_strongswan"])
+        self.assertEqual(kwargs["cwd"], PROJECT_ROOT)
+        self.assertIn("env", kwargs)
+        self.assertIn(str(SRC_DIR), kwargs["env"]["PYTHONPATH"].split(":"))
 
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
 """Run the end-to-end PQCCN orchestration pipeline.
 
 Preferred usage:
-  python3 -m pqccn_strongswan ./logs ./configs/experiments/presets/composite_ideal.yaml
-  python3 -m pqccn_strongswan ./logs "./configs/experiments/presets/*.yaml"
-  python3 -m pqccn_strongswan ./logs ./configs/experiments/presets/
+  python -m pqccn_strongswan ./logs ./configs/experiments/presets/composite_ideal.yaml
+  python -m pqccn_strongswan ./logs "./configs/experiments/presets/*.yaml"
+  python -m pqccn_strongswan ./logs ./configs/experiments/presets/
 """
 
 import argparse
